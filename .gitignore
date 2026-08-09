@@ -1,0 +1,9 @@
+node_modules/
+.env
+server.log
+server-error.log
+server.err.log
+npm-debug.log*
+*.backup
+operaciones_backup_*.json
+Lista_cliente.xlsx

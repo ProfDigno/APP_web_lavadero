@@ -1,0 +1,18 @@
+<%- include('partials/header') %>
+<section class="login-panel">
+  <h1>Ingreso</h1>
+  <p>Gestion del lavadero de autos</p>
+  <form action="/login" method="post" class="stack">
+    <label>
+      Usuario
+      <input name="login" autocomplete="username" required autofocus>
+    </label>
+    <label>
+      Clave
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Entrar</button>
+  </form>
+  <p class="hint">Usuario inicial: admin / admin123</p>
+</section>
+<%- include('partials/footer') %>

@@ -1,0 +1,189 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1><%= factura.id ? 'Factura #' + factura.id : (factura.origen === 'LAVADO' ? 'Facturar lavado' : 'Nueva factura') %></h1>
+    <p><%= factura.origen === 'LAVADO' ? 'Datos precargados desde lavado' : 'Factura libre para preimpreso' %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/facturas">Volver</a>
+    <% if (factura.id) { %>
+      <a class="button" href="/facturas/<%= factura.id %>/pdf" target="_blank">PDF</a>
+      <% if (factura.electronica_cdc) { %>
+        <a class="button secondary" href="/facturas/<%= factura.id %>/electronica/kude" target="_blank">KuDE</a>
+      <% } %>
+    <% } %>
+  </div>
+</div>
+
+<form class="stack" method="post" action="<%= factura.id ? '/facturas/' + factura.id : '/facturas' %>" data-invoice-form>
+  <input type="hidden" name="origen" value="<%= factura.origen || 'LIBRE' %>">
+  <input type="hidden" name="lavado_id" value="<%= factura.lavado_id || '' %>">
+  <input type="hidden" name="cliente_id" value="<%= factura.cliente_id || '' %>" data-invoice-client-id>
+
+  <% if (factura.id) { %>
+    <section class="panel stack electronic-panel">
+      <div class="section-title compact-title">
+        <div>
+          <h2>Factura electronica</h2>
+          <p><%= factura.electronica_estado || (factura.electronica_cdc ? 'Generado' : 'Sin emitir') %></p>
+        </div>
+        <div class="actions">
+          <% if (hasFacturaSendConfig && !factura.electronica_cdc) { %>
+            <button type="submit" form="emit-electronic-form">Emitir electronica</button>
+          <% } %>
+          <% if (factura.electronica_cdc) { %>
+            <button class="secondary" type="submit" form="refresh-electronic-form">Actualizar estado</button>
+            <a class="button secondary" href="/facturas/<%= factura.id %>/electronica/kude" target="_blank">KuDE</a>
+          <% } %>
+          <% if (!hasFacturaSendConfig) { %>
+            <a class="button secondary" href="/facturasend/config">Configurar</a>
+          <% } %>
+        </div>
+      </div>
+      <dl class="detail-list compact-detail">
+        <div><dt>CDC</dt><dd><%= factura.electronica_cdc || '-' %></dd></div>
+        <div><dt>Lote</dt><dd><%= factura.electronica_lote_id || '-' %></dd></div>
+        <div><dt>Nro electronico</dt><dd><%= factura.electronica_numero || '-' %></dd></div>
+        <div><dt>Enviado</dt><dd><%= factura.electronica_enviado_en ? formatDateTime(factura.electronica_enviado_en) : '-' %></dd></div>
+      </dl>
+    </section>
+  <% } %>
+
+  <section class="grid two">
+    <div class="panel stack">
+      <h2>Datos de factura</h2>
+      <label>
+        Numero de factura
+        <input name="numero" value="<%= factura.numero || '' %>" placeholder="Opcional">
+      </label>
+      <label>
+        Fecha de emision
+        <input type="date" name="fecha_emision" value="<%= formatDateInput(factura.fecha_emision) %>" required>
+      </label>
+      <label>
+        Condicion
+        <input name="condicion_view" value="CONTADO" readonly>
+      </label>
+    </div>
+
+    <div class="panel stack">
+      <h2>Cliente</h2>
+      <label>
+        Buscar cliente
+        <input type="search" data-invoice-client-search placeholder="Nombre, RUC, chapa o telefono">
+      </label>
+      <div class="client-search-results is-hidden" data-invoice-client-results></div>
+      <label>
+        Nombre / Razon social
+        <input name="cliente_nombre" value="<%= factura.cliente_nombre || '' %>" data-uppercase required>
+      </label>
+      <label>
+        RUC
+        <input name="cliente_ruc" value="<%= factura.cliente_ruc || '' %>" data-uppercase required>
+        <small class="invoice-ruc-status" data-invoice-ruc-status></small>
+      </label>
+      <label>
+        Direccion
+        <input name="cliente_direccion" value="<%= factura.cliente_direccion || '' %>" data-uppercase>
+      </label>
+    </div>
+  </section>
+
+  <section class="panel stack">
+    <div class="section-title compact-title">
+      <div>
+        <h2>Items</h2>
+        <p>Maximo 9 lineas para respetar el preimpreso.</p>
+      </div>
+      <button type="button" class="secondary" data-add-invoice-item>Agregar item</button>
+    </div>
+
+    <div class="invoice-items" data-invoice-items>
+      <% items.forEach((item) => { %>
+        <div class="invoice-item-line" data-invoice-item-line>
+          <label>
+            Servicio
+            <select name="servicio_id" data-invoice-service>
+              <option value="">Texto libre</option>
+              <% servicios.forEach((servicio) => { %>
+                <option
+                  value="<%= servicio.id %>"
+                  data-name="<%= servicio.nombre %>"
+                  data-price="<%= servicio.precio_base %>"
+                  <%= Number(item.servicio_id || 0) === Number(servicio.id) ? 'selected' : '' %>>
+                  <%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %>
+                </option>
+              <% }) %>
+            </select>
+          </label>
+          <label>
+            Descripcion
+            <input name="descripcion" value="<%= item.descripcion || item.servicio_nombre || '' %>" data-uppercase required>
+          </label>
+          <label>
+            Cantidad
+            <input name="cantidad" value="<%= item.cantidad || 1 %>" inputmode="decimal" data-invoice-quantity required>
+          </label>
+          <label>
+            Precio
+            <input name="precio_unitario" value="<%= item.precio_unitario || '' %>" inputmode="numeric" data-money-input data-invoice-price required>
+          </label>
+          <label>
+            Total
+            <input value="<%= item.total || '' %>" data-invoice-line-total readonly>
+          </label>
+          <button type="button" class="secondary compact-button" data-remove-invoice-item>Quitar</button>
+        </div>
+      <% }) %>
+    </div>
+  </section>
+
+  <section class="metrics">
+    <article><span>Subtotal</span><strong data-invoice-subtotal><%= formatMoney(factura.subtotal) %></strong></article>
+    <article><span>IVA 10%</span><strong data-invoice-iva><%= formatMoney(factura.iva_10) %></strong></article>
+    <article><span>Total</span><strong data-invoice-total><%= formatMoney(factura.total) %></strong></article>
+  </section>
+
+  <div class="actions">
+    <button type="submit">Guardar factura</button>
+    <% if (factura.id) { %><a class="button secondary" href="/facturas/<%= factura.id %>/pdf" target="_blank">Generar PDF</a><% } %>
+  </div>
+
+  <template data-invoice-item-template>
+    <div class="invoice-item-line" data-invoice-item-line>
+      <label>
+        Servicio
+        <select name="servicio_id" data-invoice-service>
+          <option value="">Texto libre</option>
+          <% servicios.forEach((servicio) => { %>
+            <option value="<%= servicio.id %>" data-name="<%= servicio.nombre %>" data-price="<%= servicio.precio_base %>">
+              <%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %>
+            </option>
+          <% }) %>
+        </select>
+      </label>
+      <label>
+        Descripcion
+        <input name="descripcion" data-uppercase required>
+      </label>
+      <label>
+        Cantidad
+        <input name="cantidad" value="1" inputmode="decimal" data-invoice-quantity required>
+      </label>
+      <label>
+        Precio
+        <input name="precio_unitario" inputmode="numeric" data-money-input data-invoice-price required>
+      </label>
+      <label>
+        Total
+        <input data-invoice-line-total readonly>
+      </label>
+      <button type="button" class="secondary compact-button" data-remove-invoice-item>Quitar</button>
+    </div>
+  </template>
+</form>
+<% if (factura.id) { %>
+  <form id="emit-electronic-form" method="post" action="/facturas/<%= factura.id %>/electronica/emitir"></form>
+  <form id="refresh-electronic-form" method="post" action="/facturas/<%= factura.id %>/electronica/estado"></form>
+<% } %>
+<%- include('../partials/footer') %>

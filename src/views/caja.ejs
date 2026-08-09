@@ -1,0 +1,169 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Caja</h1>
+    <p>Resumen diario calculado por movimientos reales</p>
+  </div>
+  <a class="button secondary" href="/">Inicio</a>
+</div>
+
+<form class="toolbar" method="get" action="/caja">
+  <label>
+    Fecha
+    <input type="date" name="fecha" value="<%= fecha %>">
+  </label>
+  <button type="submit">Ver</button>
+</form>
+
+<%
+  const totalLavados = caja.lavados.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const totalCreditos = caja.creditos.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const totalGastos = caja.gastos.reduce((sum, item) => sum + Number(item.monto || 0), 0);
+  const totalVales = caja.vales.reduce((sum, item) => sum + Number(item.monto || 0), 0);
+%>
+
+<section class="metrics">
+  <article><span>Ingresos del dia</span><strong><%= formatMoney(caja.resumen.ingresos) %></strong></article>
+  <article><span>Egresos del dia</span><strong><%= formatMoney(caja.resumen.egresos) %></strong></article>
+  <article class="<%= Number(caja.resumen.neto || 0) < 0 ? 'metric-warning' : '' %>"><span>Neto general</span><strong><%= formatMoney(caja.resumen.neto) %></strong></article>
+  <article><span>Efectivo ingresado</span><strong><%= formatMoney(caja.resumen.efectivoIngresos) %></strong></article>
+  <article><span>Efectivo egresado</span><strong><%= formatMoney(caja.resumen.efectivoEgresos) %></strong></article>
+  <article class="<%= Number(caja.resumen.efectivoAContar || 0) < 0 ? 'metric-warning' : '' %>"><span>Efectivo a contar</span><strong><%= formatMoney(caja.resumen.efectivoAContar) %></strong></article>
+</section>
+
+<section class="grid one caja-grid">
+  <div>
+    <h2>Resumen por forma de pago</h2>
+    <div class="table-wrap caja-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Forma de pago</th>
+            <th>Ingresos</th>
+            <th>Egresos</th>
+            <th>Neto</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% caja.formas.forEach((forma) => { %>
+            <tr>
+              <td><%- include('partials/payment_chip', { nombre: forma.forma_pago, icono: forma.forma_pago_icono, color: forma.forma_pago_color }) %></td>
+              <td class="money-cell"><%= formatMoney(forma.ingresos) %></td>
+              <td class="money-cell"><%= formatMoney(forma.egresos) %></td>
+              <td class="money-cell"><strong><%= formatMoney(forma.neto) %></strong></td>
+            </tr>
+          <% }) %>
+          <% if (!caja.formas.length) { %><tr><td colspan="4">Sin movimientos para la fecha.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="grid two caja-grid">
+  <div>
+    <div class="section-title compact-title">
+      <h2>Ingresos por lavados</h2>
+      <strong class="section-total"><%= formatMoney(totalLavados) %></strong>
+    </div>
+    <div class="table-wrap caja-table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Hora</th><th>Auto</th><th>Pago</th><th>Total</th></tr>
+        </thead>
+        <tbody>
+          <% caja.lavados.forEach((lavado) => { %>
+            <tr>
+              <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+              <td><%= formatTime(lavado.creado_en) %></td>
+              <td><strong><%= lavado.chapa %></strong><br><small><%= lavado.marca_modelo || '' %></small></td>
+              <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
+              <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+            </tr>
+          <% }) %>
+          <% if (!caja.lavados.length) { %><tr><td colspan="5">Sin lavados de contado.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title compact-title">
+      <h2>Ingresos por creditos</h2>
+      <strong class="section-total"><%= formatMoney(totalCreditos) %></strong>
+    </div>
+    <div class="table-wrap caja-table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Pagado</th><th>Grupo</th><th>Pago</th><th>Total</th></tr>
+        </thead>
+        <tbody>
+          <% caja.creditos.forEach((credito) => { %>
+            <tr>
+              <td><a href="/grupo-creditos/<%= credito.id %>">#<%= credito.id %></a></td>
+              <td><%= formatTime(credito.pagado_en) %></td>
+              <td><strong><%= credito.grupo_nombre %></strong><br><small><%= credito.lavados_count %> lavados</small></td>
+              <td><%- include('partials/payment_chip', { nombre: credito.forma_pago, icono: credito.forma_pago_icono, color: credito.forma_pago_color }) %></td>
+              <td class="money-cell"><%= formatMoney(credito.total) %></td>
+            </tr>
+          <% }) %>
+          <% if (!caja.creditos.length) { %><tr><td colspan="5">Sin creditos cobrados.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="grid two caja-grid">
+  <div>
+    <div class="section-title compact-title">
+      <h2>Egresos por gastos</h2>
+      <strong class="section-total"><%= formatMoney(totalGastos) %></strong>
+    </div>
+    <div class="table-wrap caja-table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Tipo</th><th>Descripcion</th><th>Pago</th><th>Monto</th></tr>
+        </thead>
+        <tbody>
+          <% caja.gastos.forEach((gasto) => { %>
+            <tr>
+              <td>#<%= gasto.id %></td>
+              <td><%= gasto.gasto_tipo_nombre %></td>
+              <td><%= gasto.descripcion || '' %></td>
+              <td><%- include('partials/payment_chip', { nombre: gasto.forma_pago, icono: gasto.forma_pago_icono, color: gasto.forma_pago_color }) %></td>
+              <td class="money-cell"><%= formatMoney(gasto.monto) %></td>
+            </tr>
+          <% }) %>
+          <% if (!caja.gastos.length) { %><tr><td colspan="5">Sin gastos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title compact-title">
+      <h2>Egresos por vales</h2>
+      <strong class="section-total"><%= formatMoney(totalVales) %></strong>
+    </div>
+    <div class="table-wrap caja-table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Personal</th><th>Pago</th><th>Monto</th></tr>
+        </thead>
+        <tbody>
+          <% caja.vales.forEach((vale) => { %>
+            <tr>
+              <td>#<%= vale.id %></td>
+              <td><%= vale.personal_nombre %></td>
+              <td><%- include('partials/payment_chip', { nombre: vale.forma_pago, icono: vale.forma_pago_icono, color: vale.forma_pago_color }) %></td>
+              <td class="money-cell"><%= formatMoney(vale.monto) %></td>
+            </tr>
+          <% }) %>
+          <% if (!caja.vales.length) { %><tr><td colspan="4">Sin vales.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<%- include('partials/footer') %>

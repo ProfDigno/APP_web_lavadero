@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> - Lavadero</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <% if (user) { %>
+    <header class="topbar">
+      <a class="brand" href="/">Lavadero</a>
+      <form action="/logout" method="post">
+        <span><%= user.nombre %></span>
+        <button class="ghost" type="submit">Salir</button>
+      </form>
+    </header>
+    <nav class="nav">
+      <a href="/">Inicio</a>
+      <details class="nav-menu">
+        <summary>Lavados</summary>
+        <div class="nav-submenu">
+          <a href="/lavados">Registrar lavado</a>
+          <a href="/analisis-lavados">Analisis general</a>
+        </div>
+      </details>
+      <a href="/caja">Caja</a>
+      <details class="nav-menu">
+        <summary>Cliente</summary>
+        <div class="nav-submenu">
+          <a href="/clientes">Cliente</a>
+          <a href="/grupo-clientes">Grupo de cliente</a>
+          <a href="/grupo-creditos">Credito por grupo</a>
+        </div>
+      </details>
+      <details class="nav-menu">
+        <summary>Servicio</summary>
+        <div class="nav-submenu">
+          <a href="/servicios">Servicios</a>
+          <a href="/servicio-grupos">Grupos de servicios</a>
+        </div>
+      </details>
+      <details class="nav-menu">
+        <summary>Personal</summary>
+        <div class="nav-submenu">
+          <a href="/personal">Personal</a>
+          <a href="/analisis-personal">Analisis de personal</a>
+          <a href="/vales">Vales</a>
+          <a href="/comisiones">Comisiones</a>
+        </div>
+      </details>
+      <details class="nav-menu">
+        <summary>Gasto</summary>
+        <div class="nav-submenu">
+          <a href="/gasto-tipos">Gasto tipo</a>
+          <a href="/gastos">Gasto</a>
+        </div>
+      </details>
+      <details class="nav-menu">
+        <summary>Factura</summary>
+        <div class="nav-submenu">
+          <a href="/facturas">Facturas</a>
+          <a href="/facturas/nueva">Nueva factura libre</a>
+          <a href="/facturasend/config">Configuracion electronica</a>
+        </div>
+      </details>
+      <a href="/formas-pago">Pagos</a>
+      <a href="/usuarios">Usuarios</a>
+    </nav>
+  <% } %>
+  <main class="container <%= user ? '' : 'auth-container' %>">
+    <% if (flash) { %>
+      <div class="flash <%= flash.type %>"><%= flash.message %></div>
+    <% } %>

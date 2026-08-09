@@ -1,0 +1,105 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Credito <%= credito.grupo_nombre %></h1>
+    <p>Cuenta #<%= credito.id %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/grupo-creditos">Volver</a>
+    <a class="icon-button excel-button" href="/grupo-creditos/<%= credito.id %>/excel" aria-label="Excel" title="Excel">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <path d="M14 2v6h6"></path>
+        <path d="M8 11l4 6"></path>
+        <path d="M12 11l-4 6"></path>
+      </svg>
+    </a>
+    <a class="icon-button pdf-button" href="/grupo-creditos/<%= credito.id %>/pdf" aria-label="PDF" title="PDF">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <path d="M14 2v6h6"></path>
+        <path d="M8 13h2a2 2 0 0 0 0-4H8v8"></path>
+        <path d="M13 9v8h1a3 3 0 0 0 0-6h-1"></path>
+      </svg>
+    </a>
+  </div>
+</div>
+
+<section class="grid two">
+  <div class="panel">
+    <dl class="facts">
+      <dt>Grupo</dt><dd><%= credito.grupo_nombre %></dd>
+      <dt>Estado</dt><dd><span class="badge <%= credito.estado === 'ABIERTO' ? 'credito' : 'pagado' %>"><%= credito.estado %></span></dd>
+      <dt>Inicio</dt><dd><%= formatDate(credito.fecha_inicio) %></dd>
+      <dt>Fin</dt><dd><%= credito.fecha_fin ? formatDate(credito.fecha_fin) : 'Abierto' %></dd>
+      <dt>Lavados</dt><dd><%= credito.lavados_count %></dd>
+      <dt>Total</dt><dd><strong><%= formatMoney(credito.total) %></strong></dd>
+      <% if (credito.estado === 'PAGADO') { %>
+        <dt>Forma pago</dt>
+        <dd>
+          <% if (credito.forma_pago) { %>
+            <%- include('../partials/payment_chip', { nombre: credito.forma_pago, icono: credito.forma_pago_icono, color: credito.forma_pago_color }) %>
+          <% } %>
+        </dd>
+        <dt>Pagado</dt><dd><%= formatDateTime(credito.pagado_en) %></dd>
+        <dt>Usuario</dt><dd><%= credito.pagado_por || '' %></dd>
+      <% } %>
+    </dl>
+  </div>
+
+  <% if (credito.estado === 'ABIERTO') { %>
+    <form class="panel stack" method="post" action="/grupo-creditos/<%= credito.id %>/pagar">
+      <h2>Pagar cuenta</h2>
+      <label>
+        Forma de pago
+        <select name="forma_pago_id" required>
+          <option value="">Seleccione forma de pago</option>
+          <% formasPago.forEach((forma) => { %>
+            <option value="<%= forma.id %>"><%= forma.nombre %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button type="submit" <%= !lavados.length ? 'disabled' : '' %>>Marcar como pagado</button>
+      <% if (!lavados.length) { %><small>No hay lavados pendientes para cobrar.</small><% } %>
+    </form>
+  <% } else { %>
+    <div class="panel">
+      <h2>Cuenta pagada</h2>
+      <p>Esta cuenta ya fue cerrada. Los nuevos lavados en credito abriran otra cuenta para el grupo.</p>
+    </div>
+  <% } %>
+</section>
+
+<section>
+  <div class="section-title">
+    <h2>Lavados realizados</h2>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Fecha</th>
+          <th>Auto</th>
+          <th>Personal</th>
+          <th>Servicios</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% lavados.forEach((lavado) => { %>
+          <tr>
+            <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+            <td><%= formatDateTime(lavado.creado_en) %></td>
+            <td><strong><%= lavado.chapa %></strong><br><small><%= lavado.marca_modelo %></small></td>
+            <td><%= lavado.personal_nombre %></td>
+            <td><%= lavado.servicios %></td>
+            <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+          </tr>
+        <% }) %>
+        <% if (!lavados.length) { %><tr><td colspan="6">Sin lavados en esta cuenta.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+<%- include('../partials/footer') %>

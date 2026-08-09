@@ -1,0 +1,7 @@
+<%- include('partials/header') %>
+<section class="empty-state">
+  <h1><%= title %></h1>
+  <p><%= message %></p>
+  <% if (user) { %><a class="button" href="/">Volver al inicio</a><% } %>
+</section>
+<%- include('partials/footer') %>

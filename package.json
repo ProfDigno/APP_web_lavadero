@@ -1,0 +1,27 @@
+{
+  "name": "app-web-lavadero",
+  "version": "1.0.0",
+  "description": "Aplicacion web local para gestion de lavadero de autos.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "migrate": "node src/migrate.js",
+    "seed": "node src/seed.js",
+    "setup-db": "node src/migrate.js && node src/seed.js",
+    "import-clientes:check": "node src/import_clientes_excel.js",
+    "import-clientes": "node src/import_clientes_excel.js --execute"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "chart.js": "^4.5.1",
+    "dotenv": "^16.4.7",
+    "ejs": "^3.1.10",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "multer": "^2.2.0",
+    "pdfkit": "^0.19.1",
+    "pg": "^8.13.1"
+  }
+}

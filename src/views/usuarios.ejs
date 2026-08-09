@@ -1,0 +1,88 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Usuarios</h1>
+    <p><%= editItem ? 'Editando usuario' : 'Alta y mantenimiento' %></p>
+  </div>
+  <button type="button" data-open-crud-modal>Nuevo usuario</button>
+</div>
+
+<section class="grid one">
+  <div class="crud-list-panel" data-crud-search-scope>
+    <div class="crud-searchbar">
+      <label>
+        Buscar
+        <input type="search" placeholder="Buscar en usuarios" autocomplete="off" data-crud-search>
+      </label>
+      <span class="crud-search-count" data-crud-search-count><%= usuarios.length %> usuarios</span>
+    </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Usuario</th><th>Nombre</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% usuarios.forEach((item) => { %>
+          <tr class="<%= !item.activo ? 'row-inactive' : '' %>" data-crud-row data-search="<%= [item.id, item.login, item.nombre, item.activo ? 'Activo' : 'Inactivo'].join(' ') %>">
+            <td><%= item.id %></td>
+            <td><%= item.login %></td>
+            <td><%= item.nombre %></td>
+            <td class="cell-actions">
+              <a class="icon-button" href="/usuarios?edit=<%= item.id %>" aria-label="Editar" title="Editar">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
+                  <path d="M13.5 6.5l4 4"></path>
+                </svg>
+              </a>
+              <% if (Number(item.id) !== Number(user.id)) { %>
+                <form action="/usuarios/<%= item.id %>/toggle" method="post" title="<%= item.activo ? 'Desactivar' : 'Activar' %>">
+                  <label class="toggle-check">
+                    <input type="checkbox" <%= item.activo ? 'checked' : '' %> onchange="this.form.submit()">
+                    <span></span>
+                  </label>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!usuarios.length) { %><tr data-crud-empty><td colspan="4">Sin usuarios.</td></tr><% } %>
+        <tr class="is-hidden" data-crud-no-results><td colspan="4">Sin resultados para la busqueda.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  </div>
+</section>
+
+<div class="modal-backdrop <%= editItem ? '' : 'is-hidden' %>" data-crud-modal>
+  <form
+    class="modal-panel crud-modal-panel stack"
+    method="post"
+    action="/usuarios<%= editItem ? '/' + editItem.id : '' %>"
+    data-crud-modal-form
+    data-create-action="/usuarios"
+    data-new-title="Nuevo usuario">
+    <h2 data-crud-modal-title><%= editItem ? 'Editar usuario' : 'Nuevo usuario' %></h2>
+    <label>
+      Usuario
+      <input name="login" value="<%= editItem ? editItem.login : '' %>" required autocomplete="off">
+    </label>
+    <label>
+      Nombre
+      <input name="nombre" value="<%= editItem ? editItem.nombre : '' %>" required>
+    </label>
+    <label>
+      Clave <%= editItem ? '(dejar vacia para mantener)' : '' %>
+      <input name="password" type="password" <%= editItem ? '' : 'required' %> autocomplete="new-password">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="activo" <%= editItem ? (editItem.activo ? 'checked' : '') : 'checked' %>>
+      <span>Activo</span>
+    </label>
+    <div class="modal-actions">
+      <button type="submit"><%= editItem ? 'Guardar cambios' : 'Crear usuario' %></button>
+      <button type="button" class="secondary" data-close-crud-modal>Cancelar</button>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>

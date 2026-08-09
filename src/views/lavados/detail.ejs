@@ -1,0 +1,79 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Lavado #<%= lavado.id %></h1>
+    <p><%= lavado.chapa %> - <%= lavado.marca_modelo %></p>
+  </div>
+  <div class="actions">
+    <% if (lavado.estado !== 'ANULADO') { %>
+      <a class="button" href="/facturas/nueva?lavado_id=<%= lavado.id %>">Facturar</a>
+    <% } %>
+    <span class="badge <%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span>
+  </div>
+</div>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Datos</h2>
+    <dl class="facts">
+      <dt>Cliente</dt><dd><%= lavado.cliente_nombre || 'Sin nombre' %></dd>
+      <dt>RUC</dt><dd><%= lavado.ruc || '-' %></dd>
+      <dt>Personal</dt><dd><%= lavado.personal_nombre %></dd>
+      <dt>Condicion</dt><dd><%= lavado.condicion %></dd>
+      <dt>Forma pago</dt><dd><%- include('../partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></dd>
+      <dt>Creado</dt><dd><%= formatDateTime(lavado.creado_en) %> por <%= lavado.creado_por %></dd>
+      <% if (lavado.estado === 'ANULADO') { %>
+        <dt>Anulado</dt><dd><%= formatDateTime(lavado.anulado_en) %> por <%= lavado.anulado_por %></dd>
+      <% } %>
+    </dl>
+  </div>
+  <div class="panel">
+    <h2>Totales</h2>
+    <div class="metrics compact">
+      <article><span>Total</span><strong><%= formatMoney(lavado.total) %></strong></article>
+      <article><span>Personal 40%</span><strong><%= formatMoney(lavado.comision_personal) %></strong></article>
+      <article><span>Lavadero 60%</span><strong><%= formatMoney(lavado.saldo_lavadero) %></strong></article>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Servicios</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Servicio</th><th>Precio cargado</th></tr></thead>
+      <tbody>
+        <% servicios.forEach((servicio) => { %>
+          <tr><td><%= servicio.nombre %></td><td><%= formatMoney(servicio.precio) %></td></tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<% if (lavado.estado !== 'ANULADO') { %>
+  <section class="grid two">
+    <% if (lavado.estado !== 'CREDITO') { %>
+      <form class="panel stack" method="post" action="/lavados/<%= lavado.id %>/forma-pago">
+        <h2>Cambiar forma de pago</h2>
+        <label>
+          Forma de pago
+          <select name="forma_pago_id" required>
+            <% formasPago.forEach((forma) => { %>
+              <option value="<%= forma.id %>" <%= Number(forma.id) === Number(lavado.forma_pago_id) ? 'selected' : '' %>><%= forma.nombre %></option>
+            <% }) %>
+          </select>
+        </label>
+        <input type="hidden" name="redirect_to" value="/lavados/<%= lavado.id %>">
+        <button type="submit">Guardar forma de pago</button>
+      </form>
+    <% } %>
+
+    <form class="panel stack danger-zone" method="post" action="/lavados/<%= lavado.id %>/anular" data-confirm="Anular este lavado descontara su comision diaria.">
+      <h2>Anular lavado</h2>
+      <p>La anulacion conserva el registro y descuenta la comision acumulada del personal.</p>
+      <button class="danger" type="submit">Anular</button>
+    </form>
+  </section>
+<% } %>
+<%- include('../partials/footer') %>

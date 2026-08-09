@@ -1,0 +1,238 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Lavados</h1>
+    <p>Registrar lavado nuevo y revisar los ultimos movimientos</p>
+  </div>
+</div>
+
+<% if (!personal.length || !servicios.length) { %>
+  <div class="flash error">Antes de registrar lavados cargue al menos un personal y un servicio activo.</div>
+<% } %>
+
+<section class="panel">
+  <h2>Nuevo lavado</h2>
+  <form method="post" action="/lavados" class="stack wash-form">
+    <div class="grid one">
+      <label>
+        Buscar cliente existente
+        <input type="search" data-client-search name="cliente_busqueda" value="<%= formData.cliente_busqueda || '' %>" placeholder="Chapa, marca/modelo o nombre">
+      </label>
+      <div class="client-search-results is-hidden" data-client-results></div>
+      <label>
+        Cliente seleccionado
+        <select name="cliente_id" data-client-select>
+          <option value="">Crear cliente rapido</option>
+          <% clientes.forEach((cliente) => { %>
+            <option
+              value="<%= cliente.id %>"
+              data-search="<%= [cliente.chapa, cliente.marca_modelo, cliente.nombre, cliente.ruc, cliente.telefono].filter(Boolean).join(' ').toLowerCase() %>"
+              data-chapa="<%= cliente.chapa || '' %>"
+              data-marca-modelo="<%= cliente.marca_modelo || '' %>"
+              data-ruc="<%= cliente.ruc || '' %>"
+              data-nombre="<%= cliente.nombre || '' %>"
+              data-telefono="<%= cliente.telefono || '' %>"
+              data-direccion="<%= cliente.direccion || '' %>"
+              data-email="<%= cliente.email || '' %>"
+              data-grupo-cliente-id="<%= cliente.grupo_cliente_id || '' %>"
+              data-grupo-nombre="<%= cliente.grupo_nombre || '' %>"
+              <%= String(formData.cliente_id || '') === String(cliente.id) ? 'selected' : '' %>>
+              <%= cliente.chapa %> - <%= cliente.marca_modelo %><%= cliente.nombre ? ' - ' + cliente.nombre : '' %><%= cliente.grupo_nombre ? ' (' + cliente.grupo_nombre + ')' : '' %>
+            </option>
+          <% }) %>
+        </select>
+      </label>
+      <div class="choice-group">
+        <span class="choice-label">Personal</span>
+        <input type="hidden" name="personal_id" value="<%= formData.personal_id || '' %>" required data-personal-input>
+        <div class="choice-buttons" data-personal-buttons>
+          <% personal.forEach((persona) => { %>
+            <button type="button" class="choice-button <%= String(formData.personal_id || '') === String(persona.id) ? 'is-selected' : '' %>" data-personal-id="<%= persona.id %>"><%= persona.nombre %></button>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+
+    <fieldset class="quick-client" data-quick-client>
+      <legend>Cliente rapido</legend>
+      <div class="grid two">
+        <label>Chapa <input name="nueva_chapa" value="<%= formData.nueva_chapa || '' %>" autocomplete="off" data-uppercase></label>
+        <label>Marca/modelo <input name="nuevo_marca_modelo" value="<%= formData.nuevo_marca_modelo || '' %>" data-uppercase></label>
+        <label>RUC <input name="nuevo_ruc" value="<%= formData.nuevo_ruc || '' %>" data-uppercase></label>
+        <label>Nombre <input name="nuevo_nombre" value="<%= formData.nuevo_nombre || '' %>" data-uppercase></label>
+        <label>Telefono <input name="nuevo_telefono" value="<%= formData.nuevo_telefono || '' %>" data-uppercase></label>
+        <label>Direccion <input name="nuevo_direccion" value="<%= formData.nuevo_direccion || '' %>" data-uppercase></label>
+        <label>Email <input name="nuevo_email" type="email" value="<%= formData.nuevo_email || '' %>"></label>
+        <label>
+          Grupo cliente
+          <select name="nuevo_grupo_cliente_id" data-group-prefill-select>
+            <option value="">Sin grupo</option>
+            <% grupos.forEach((grupo) => { %>
+              <option
+                value="<%= grupo.id %>"
+                data-razon-social="<%= grupo.razon_social || '' %>"
+                data-ruc="<%= grupo.ruc || '' %>"
+                data-direccion="<%= grupo.direccion || '' %>"
+                data-telefono="<%= grupo.telefono || '' %>"
+                data-email="<%= grupo.email || '' %>"
+                <%= String(formData.nuevo_grupo_cliente_id || '') === String(grupo.id) ? 'selected' : '' %>><%= grupo.nombre %><%= grupo.es_credito ? ' - credito' : '' %></option>
+            <% }) %>
+          </select>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="services-box">
+      <div class="section-title">
+        <h3>Servicios</h3>
+        <button class="secondary" type="button" data-add-service>Agregar servicio</button>
+      </div>
+      <% const formServicioIds = Array.isArray(formData.servicio_id) ? formData.servicio_id : (formData.servicio_id ? [formData.servicio_id] : ['']); %>
+      <% const formPrecios = Array.isArray(formData.precio) ? formData.precio : (formData.precio ? [formData.precio] : ['']); %>
+      <% const selectedService = servicios.find((servicio) => formServicioIds.some((id) => String(id || '') === String(servicio.id))); %>
+      <% const selectedServiceGroupId = selectedService && selectedService.servicio_grupo_id ? String(selectedService.servicio_grupo_id) : ''; %>
+      <% if (servicioGrupos.length) { %>
+        <div class="service-group-buttons" data-service-group-buttons>
+          <button type="button" class="service-group-button <%= !selectedServiceGroupId ? 'is-selected' : '' %>" data-service-group-id="">
+            <span class="service-group-icon">Todos</span>
+            <span>Todos</span>
+          </button>
+          <% servicioGrupos.forEach((grupo) => { %>
+            <button type="button" class="service-group-button <%= selectedServiceGroupId === String(grupo.id) ? 'is-selected' : '' %>" data-service-group-id="<%= grupo.id %>">
+              <% if (grupo.imagen) { %>
+                <img src="<%= grupo.imagen %>" alt="">
+              <% } else { %>
+                <span class="service-group-icon"><%= (grupo.nombre || '?').slice(0, 2).toUpperCase() %></span>
+              <% } %>
+              <span><%= grupo.nombre %></span>
+            </button>
+          <% }) %>
+        </div>
+      <% } %>
+      <div data-services-list>
+        <% formServicioIds.forEach((selectedServicioId, index) => { %>
+        <div class="service-line">
+          <select name="servicio_id" required data-service-price>
+            <option value="">Servicio</option>
+            <% servicios.forEach((servicio) => { %>
+              <option value="<%= servicio.id %>" data-price="<%= servicio.precio_base %>" data-service-group-id="<%= servicio.servicio_grupo_id || '' %>" <%= String(selectedServicioId || '') === String(servicio.id) ? 'selected' : '' %>><%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %> (<%= new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 }).format(Number(servicio.precio_base || 0)) %>)</option>
+            <% }) %>
+          </select>
+          <input name="precio" value="<%= formPrecios[index] || '' %>" inputmode="decimal" placeholder="Precio" required data-price-input>
+          <button class="icon danger" type="button" data-remove-service aria-label="Quitar servicio">x</button>
+        </div>
+        <% }) %>
+      </div>
+      <template data-service-template>
+        <div class="service-line">
+          <select name="servicio_id" required data-service-price>
+            <option value="">Servicio</option>
+            <% servicios.forEach((servicio) => { %>
+              <option value="<%= servicio.id %>" data-price="<%= servicio.precio_base %>" data-service-group-id="<%= servicio.servicio_grupo_id || '' %>"><%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %> (<%= new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 }).format(Number(servicio.precio_base || 0)) %>)</option>
+            <% }) %>
+          </select>
+          <input name="precio" inputmode="decimal" placeholder="Precio" required data-price-input>
+          <button class="icon danger" type="button" data-remove-service aria-label="Quitar servicio">x</button>
+        </div>
+      </template>
+      <div class="totals">
+        <span>Total <strong data-total>0</strong></span>
+        <span>Personal 40% <strong data-comision>0</strong></span>
+        <span>Lavadero 60% <strong data-saldo>0</strong></span>
+      </div>
+    </div>
+
+    <button type="submit" <%= !personal.length || !servicios.length ? 'disabled' : '' %>>Guardar lavado</button>
+  </form>
+</section>
+
+<section>
+  <div class="section-title">
+    <h2>Lavados registrados</h2>
+    <form method="get" action="/lavados" class="date-filter">
+      <label>
+        Fecha
+        <input type="date" name="fecha" value="<%= fecha %>" onchange="this.form.submit()">
+      </label>
+      <button type="submit" class="secondary">Ver</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Auto</th><th>Personal</th><th>Pago</th></tr></thead>
+      <tbody>
+        <% lavados.forEach((lavado) => { %>
+          <tr class="wash-row estado-<%= lavado.estado.toLowerCase() %>">
+            <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+            <td class="wash-auto">
+              <span class="wash-status-title estado-<%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span>
+              <strong><%= lavado.chapa %> (<%= formatTime(lavado.creado_en) %>)<%= Number(lavado.duplicado_emitido_dia || 0) > 1 && lavado.estado === 'EMITIDO' ? ' (DUPLICADO)' : '' %></strong>
+              <br><small><%= lavado.marca_modelo %></small>
+            </td>
+            <td class="wash-personal"><strong><%= lavado.personal_nombre %></strong><br><span class="wash-total"><%= formatMoney(lavado.total) %></span></td>
+            <td>
+              <div class="payment-cell">
+                <%- include('../partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %>
+                <% if (lavado.estado !== 'ANULADO' && lavado.estado !== 'CREDITO' && lavado.estado !== 'PAGADO') { %>
+                  <div class="payment-actions" aria-label="Cambiar forma de pago">
+                    <% formasPago.forEach((forma) => { %>
+                      <% if (forma.mostrar_despues_crear) { %>
+                        <form method="post" action="/lavados/<%= lavado.id %>/forma-pago">
+                          <input type="hidden" name="forma_pago_id" value="<%= forma.id %>">
+                          <input type="hidden" name="redirect_to" value="/lavados?fecha=<%= fecha %>">
+                          <button
+                            class="payment-button <%= Number(forma.id) === Number(lavado.forma_pago_id) ? 'is-active' : '' %>"
+                            style="--payment-color: <%= forma.color || '#687385' %>"
+                            title="<%= forma.nombre %>"
+                            aria-label="Cambiar a <%= forma.nombre %>"
+                            data-payment-confirm
+                            data-lavado-id="#<%= lavado.id %>"
+                            data-auto="<%= lavado.chapa %> - <%= lavado.marca_modelo %>"
+                            data-personal="<%= lavado.personal_nombre %>"
+                            data-total="<%= formatMoney(lavado.total) %>"
+                            data-pago-actual="<%= lavado.forma_pago %>"
+                            data-pago-nuevo="<%= forma.nombre %>"
+                            type="submit"
+                            <%= Number(forma.id) === Number(lavado.forma_pago_id) ? 'disabled' : '' %>>
+                            <span>
+                              <% if (forma.icono_ruta && String(forma.icono_ruta).startsWith('/uploads/')) { %>
+                                <img src="<%= forma.icono_ruta %>" alt="">
+                              <% } else { %>
+                                <%= paymentIconLabel(forma.icono_ruta) %>
+                              <% } %>
+                            </span>
+                          </button>
+                        </form>
+                      <% } %>
+                    <% }) %>
+                  </div>
+                <% } %>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!lavados.length) { %><tr><td colspan="4">Sin lavados.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal-backdrop is-hidden" data-payment-modal>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+    <h2 id="payment-modal-title">Confirmar forma de pago</h2>
+    <dl class="modal-facts">
+      <dt>Lavado</dt><dd data-modal-lavado></dd>
+      <dt>Auto</dt><dd data-modal-auto></dd>
+      <dt>Personal</dt><dd data-modal-personal></dd>
+      <dt>Total</dt><dd data-modal-total></dd>
+      <dt>Pago actual</dt><dd data-modal-pago-actual></dd>
+      <dt>Nuevo pago</dt><dd data-modal-pago-nuevo></dd>
+    </dl>
+    <p>Desea cambiar la forma de pago?</p>
+    <div class="modal-actions">
+      <button type="button" data-payment-confirm-yes>SI</button>
+      <button type="button" class="secondary" data-payment-confirm-no>NO</button>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

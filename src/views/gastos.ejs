@@ -1,0 +1,114 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Gastos</h1>
+    <p>Registro de egresos por tipo de gasto</p>
+  </div>
+  <button type="button" data-open-crud-modal>Nuevo gasto</button>
+</div>
+
+<section class="grid one">
+  <form class="toolbar" method="get" action="/gastos">
+    <label>
+      Fecha
+      <input type="date" name="fecha" value="<%= fecha %>">
+    </label>
+    <button type="submit">Ver</button>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tipo</th>
+          <th>Fecha gasto</th>
+          <th>Descripcion</th>
+          <th>Monto</th>
+          <th>Forma pago</th>
+          <th>Estado</th>
+          <th>Creado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% gastos.forEach((gasto) => { %>
+          <tr class="<%= gasto.estado === 'ANULADO' ? 'row-inactive' : '' %>">
+            <td>#<%= gasto.id %></td>
+            <td><%= gasto.gasto_tipo_nombre %></td>
+            <td><%= formatDate(gasto.fecha_gasto) %></td>
+            <td><%= gasto.descripcion || '' %></td>
+            <td class="money-cell"><%= formatMoney(gasto.monto) %></td>
+            <td><%- include('partials/payment_chip', { nombre: gasto.forma_pago, icono: gasto.forma_pago_icono, color: gasto.forma_pago_color }) %></td>
+            <td><span class="badge <%= gasto.estado.toLowerCase() %>"><%= gasto.estado %></span></td>
+            <td><%= formatDateTime(gasto.creado_en) %></td>
+            <td class="cell-actions">
+              <% if (gasto.estado !== 'ANULADO') { %>
+                <a class="icon-button" href="/gastos?fecha=<%= fecha %>&edit=<%= gasto.id %>" aria-label="Editar" title="Editar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
+                    <path d="M13.5 6.5l4 4"></path>
+                  </svg>
+                </a>
+                <form method="post" action="/gastos/<%= gasto.id %>/anular" data-confirm="Anular este gasto dejara el monto en cero.">
+                  <input type="hidden" name="fecha" value="<%= fecha %>">
+                  <button class="link" type="submit">Anular</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!gastos.length) { %>
+          <tr><td colspan="9">Sin gastos para la fecha.</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="modal-backdrop <%= editItem ? '' : 'is-hidden' %>" data-crud-modal>
+  <form
+    class="modal-panel crud-modal-panel stack"
+    method="post"
+    action="/gastos<%= editItem ? '/' + editItem.id : '' %>"
+    data-crud-modal-form
+    data-create-action="/gastos"
+    data-new-title="Nuevo gasto">
+    <h2 data-crud-modal-title><%= editItem ? 'Editar gasto' : 'Nuevo gasto' %></h2>
+    <label>
+      Tipo de gasto
+      <select name="gasto_tipo_id" required>
+        <option value="">Seleccione tipo</option>
+        <% tipos.forEach((item) => { %>
+          <option value="<%= item.id %>" <%= editItem && Number(editItem.gasto_tipo_id) === Number(item.id) ? 'selected' : '' %>><%= item.nombre %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>
+      Fecha de gasto
+      <input type="date" name="fecha_gasto" value="<%= editItem ? formatDateInput(editItem.fecha_gasto) : fecha %>" data-default-value="<%= fecha %>" required>
+    </label>
+    <label>
+      Descripcion
+      <input name="descripcion" value="<%= editItem ? (editItem.descripcion || '') : '' %>" maxlength="250" data-uppercase>
+    </label>
+    <label>
+      Monto
+      <input name="monto" inputmode="numeric" value="<%= editItem ? formatMoney(editItem.monto) : '' %>" data-money-input required>
+    </label>
+    <label>
+      Forma de pago
+      <select name="forma_pago_id" required>
+        <option value="">Seleccione forma de pago</option>
+        <% formasPago.forEach((forma) => { %>
+          <option value="<%= forma.id %>" <%= editItem && Number(editItem.forma_pago_id) === Number(forma.id) ? 'selected' : '' %>><%= forma.nombre %></option>
+        <% }) %>
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button type="submit"><%= editItem ? 'Guardar cambios' : 'Emitir gasto' %></button>
+      <button type="button" class="secondary" data-close-crud-modal>Cancelar</button>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>

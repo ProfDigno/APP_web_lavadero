@@ -1,0 +1,136 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Comisiones</h1>
+    <p>Acumulado diario por personal</p>
+  </div>
+</div>
+<form class="toolbar" method="get" action="/comisiones">
+  <label>
+    Fecha
+    <input type="date" name="fecha" value="<%= fecha %>">
+  </label>
+  <button type="submit">Ver</button>
+</form>
+<% const totalesComisiones = comisiones.reduce((totales, item) => {
+  totales.lavados += Number(item.total_lavados_emitidos || 0);
+  totales.servicios += Number(item.total_servicios || 0);
+  totales.comision += Number(item.total_comision_40 || 0);
+  totales.vales += Number(item.total_vales || 0);
+  totales.saldo += Number(item.saldo_personal || 0);
+  return totales;
+}, { lavados: 0, servicios: 0, comision: 0, vales: 0, saldo: 0 }); %>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Personal</th><th class="money-cell">Lavados emitidos</th><th class="money-cell">Total servicios</th><th class="money-cell">Comision 40%</th><th class="money-cell">Vales</th><th class="money-cell">Saldo</th></tr></thead>
+    <tbody>
+      <% comisiones.forEach((item) => { %>
+        <tr class="selectable-row" data-related-group-row="<%= item.personal_id %>">
+          <td><%= item.personal_nombre %></td>
+          <td class="money-cell"><%= item.total_lavados_emitidos %></td>
+          <td class="money-cell"><%= formatMoney(item.total_servicios) %></td>
+          <td class="money-cell"><%= formatMoney(item.total_comision_40) %></td>
+          <td class="money-cell"><%= formatMoney(item.total_vales) %></td>
+          <td class="money-cell"><strong><%= formatMoney(item.saldo_personal) %></strong></td>
+        </tr>
+      <% }) %>
+      <% if (!comisiones.length) { %><tr><td colspan="6">Sin comisiones para la fecha.</td></tr><% } %>
+    </tbody>
+    <% if (comisiones.length) { %>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <td class="money-cell"><strong><%= totalesComisiones.lavados %></strong></td>
+          <td class="money-cell"><strong><%= formatMoney(totalesComisiones.servicios) %></strong></td>
+          <td class="money-cell"><strong><%= formatMoney(totalesComisiones.comision) %></strong></td>
+          <td class="money-cell"><strong><%= formatMoney(totalesComisiones.vales) %></strong></td>
+          <td class="money-cell"><strong><%= formatMoney(totalesComisiones.saldo) %></strong></td>
+        </tr>
+      </tfoot>
+    <% } %>
+  </table>
+</div>
+<div class="related-clients-panel is-hidden" data-related-empty>
+  Seleccione un personal para ver sus lavados y vales de la fecha.
+</div>
+<% comisiones.forEach((item) => { %>
+  <% const lavados = (lavadosByPersonal && lavadosByPersonal[String(item.personal_id)]) || []; %>
+  <% const vales = (valesByPersonal && valesByPersonal[String(item.personal_id)]) || []; %>
+  <section class="related-clients-panel is-hidden" data-related-panel="<%= item.personal_id %>">
+    <div class="section-title compact-title">
+      <div>
+        <h2>Movimientos de <%= item.personal_nombre %></h2>
+        <p><%= formatDate(fecha) %></p>
+      </div>
+    </div>
+    <div class="tab-buttons" role="tablist">
+      <button type="button" class="secondary is-selected" data-tab-button="lavados-comision-<%= item.personal_id %>">Lavados (<%= lavados.length %>)</button>
+      <button type="button" class="secondary" data-tab-button="vales-comision-<%= item.personal_id %>">Vales (<%= vales.length %>)</button>
+    </div>
+    <div data-tab-panel="lavados-comision-<%= item.personal_id %>">
+      <div class="table-wrap related-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Hora</th>
+              <th>Auto</th>
+              <th>Grupo cliente</th>
+              <th>Pago</th>
+              <th>Total</th>
+              <th>Comision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% lavados.forEach((lavado) => { %>
+              <tr class="estado-<%= lavado.estado.toLowerCase() %>">
+                <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+                <td><%= formatTime(lavado.creado_en) %></td>
+                <td><strong><%= lavado.chapa %></strong><br><small><%= lavado.marca_modelo || '' %></small></td>
+                <td><%= lavado.grupo_cliente_nombre || '' %></td>
+                <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
+                <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+                <td class="money-cell"><%= formatMoney(lavado.comision_personal) %></td>
+              </tr>
+            <% }) %>
+            <% if (!lavados.length) { %>
+              <tr><td colspan="7">Sin lavados para este personal en la fecha.</td></tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="is-hidden" data-tab-panel="vales-comision-<%= item.personal_id %>">
+      <div class="table-wrap related-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Fecha pago</th>
+              <th>Monto</th>
+              <th>Forma pago</th>
+              <th>Estado</th>
+              <th>Creado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% vales.forEach((vale) => { %>
+              <tr class="<%= vale.estado === 'ANULADO' ? 'row-inactive' : '' %>">
+                <td>#<%= vale.id %></td>
+                <td><%= formatDate(vale.fecha_pago) %></td>
+                <td class="money-cell"><%= formatMoney(vale.monto) %></td>
+                <td><%- include('partials/payment_chip', { nombre: vale.forma_pago, icono: vale.forma_pago_icono, color: vale.forma_pago_color }) %></td>
+                <td><span class="badge <%= vale.estado.toLowerCase() %>"><%= vale.estado %></span></td>
+                <td><%= formatDateTime(vale.creado_en) %></td>
+              </tr>
+            <% }) %>
+            <% if (!vales.length) { %>
+              <tr><td colspan="6">Sin vales para este personal en la fecha.</td></tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+<% }) %>
+<%- include('partials/footer') %>

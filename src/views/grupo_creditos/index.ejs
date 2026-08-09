@@ -1,0 +1,65 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Creditos por grupo</h1>
+    <p>Cuentas acumuladas por grupo de cliente</p>
+  </div>
+</div>
+
+<section class="grid one">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Grupo</th>
+          <th>Estado</th>
+          <th>Inicio</th>
+          <th>Fin</th>
+          <th>Lavados</th>
+          <th>Total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% creditos.forEach((credito) => { %>
+          <tr>
+            <td>#<%= credito.id %></td>
+            <td><strong><%= credito.grupo_nombre %></strong></td>
+            <td><span class="badge <%= credito.estado === 'ABIERTO' ? 'credito' : 'pagado' %>"><%= credito.estado %></span></td>
+            <td><%= formatDate(credito.fecha_inicio) %></td>
+            <td><%= credito.fecha_fin ? formatDate(credito.fecha_fin) : '' %></td>
+            <td><%= credito.lavados_count %></td>
+            <td class="money-cell"><%= formatMoney(credito.total) %></td>
+            <td class="cell-actions">
+              <a class="icon-button" href="/grupo-creditos/<%= credito.id %>" aria-label="Ver" title="Ver">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </a>
+              <a class="icon-button excel-button" href="/grupo-creditos/<%= credito.id %>/excel" aria-label="Excel" title="Excel">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <path d="M14 2v6h6"></path>
+                  <path d="M8 11l4 6"></path>
+                  <path d="M12 11l-4 6"></path>
+                </svg>
+              </a>
+              <a class="icon-button pdf-button" href="/grupo-creditos/<%= credito.id %>/pdf" aria-label="PDF" title="PDF">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <path d="M14 2v6h6"></path>
+                  <path d="M8 13h2a2 2 0 0 0 0-4H8v8"></path>
+                  <path d="M13 9v8h1a3 3 0 0 0 0-6h-1"></path>
+                </svg>
+              </a>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!creditos.length) { %><tr><td colspan="8">Sin creditos por grupo.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+<%- include('../partials/footer') %>

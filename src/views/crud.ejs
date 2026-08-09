@@ -1,0 +1,546 @@
+<%- include('partials/header') %>
+<% const modalCrud = ['clientes', 'servicios', 'servicio-grupos', 'personal', 'grupo-clientes', 'formas-pago', 'gasto-tipos'].includes(pathName); %>
+<% const entityLabel = pathName === 'clientes' ? 'cliente' : (pathName === 'servicios' ? 'servicio' : (pathName === 'servicio-grupos' ? 'grupo de servicio' : (pathName === 'personal' ? 'personal' : (pathName === 'grupo-clientes' ? 'grupo de cliente' : (pathName === 'formas-pago' ? 'forma de pago' : (pathName === 'gasto-tipos' ? 'tipo de gasto' : 'registro')))))); %>
+<% const newEntityLabel = pathName === 'formas-pago' ? 'Nueva forma de pago' : 'Nuevo ' + entityLabel; %>
+<% const tableFields = pathName === 'clientes'
+  ? ['chapa', 'marca_modelo', 'nombre', 'ruc', 'email', 'grupo_cliente_id'].map((name) => fields.find((field) => field.name === name)).filter(Boolean)
+  : pathName === 'grupo-clientes'
+    ? ['nombre', 'razon_social', 'ruc', 'telefono', 'es_credito'].map((name) => fields.find((field) => field.name === name)).filter(Boolean)
+  : fields.slice(0, 3); %>
+<% const tableColspan = tableFields.length + (modalCrud ? 2 : 3); %>
+<% const meta = listMeta || { q: '', limit: null, offset: 0, total: items.length, isPaged: false }; %>
+<% const pageFrom = meta.total && items.length ? meta.offset + 1 : 0; %>
+<% const pageTo = meta.offset + items.length; %>
+<% const prevOffset = Math.max(0, meta.offset - (meta.limit || 0)); %>
+<% const nextOffset = meta.offset + (meta.limit || 0); %>
+<% const pageQuery = meta.q ? '&q=' + encodeURIComponent(meta.q) : ''; %>
+<div class="page-head">
+  <div>
+    <h1><%= title %></h1>
+    <p><%= editItem ? 'Editando registro' : 'Alta y mantenimiento' %></p>
+  </div>
+  <% if (modalCrud) { %>
+    <button type="button" data-open-crud-modal><%= newEntityLabel %></button>
+  <% } %>
+</div>
+
+<section class="grid <%= modalCrud ? 'one' : 'two crud-layout' %>">
+  <% if (!modalCrud) { %>
+    <form class="panel stack crud-form-panel" method="post" action="/<%= pathName %><%= editItem ? '/' + editItem.id : '' %>" <%= fields.some((field) => field.type === 'image') ? 'enctype="multipart/form-data"' : '' %>>
+    <% fields.forEach((field) => { %>
+      <% if (field.type === 'checkbox') { %>
+        <label class="check">
+          <input type="checkbox" name="<%= field.name %>" <%= editItem ? (editItem[field.name] ? 'checked' : '') : 'checked' %>>
+          <span><%= field.label %></span>
+        </label>
+      <% } else if (field.type === 'select') { %>
+        <label>
+          <%= field.label %>
+          <select name="<%= field.name %>">
+            <option value="">Sin grupo</option>
+            <% (optionsByField[field.name] || []).forEach((option) => { %>
+              <option
+                value="<%= option.id %>"
+                data-razon-social="<%= option.razon_social || '' %>"
+                data-ruc="<%= option.ruc || '' %>"
+                data-direccion="<%= option.direccion || '' %>"
+                data-telefono="<%= option.telefono || '' %>"
+                data-email="<%= option.email || '' %>"
+                <%= editItem && Number(editItem[field.name]) === Number(option.id) ? 'selected' : '' %>><%= option.nombre %></option>
+            <% }) %>
+          </select>
+        </label>
+      <% } else if (field.type === 'image') { %>
+        <label>
+          <%= field.label %>
+          <input
+            name="<%= field.name %>"
+            type="file"
+            accept="image/png"
+            data-image-input="<%= field.name %>"
+            data-image-folder="<%= field.uploadFolder || 'servicio-grupos' %>"
+            <%= field.required && !editItem ? 'required' : '' %>>
+        </label>
+        <% const imageValue = editItem && editItem[field.name] ? String(editItem[field.name]) : ''; %>
+        <img
+          class="crud-thumb <%= imageValue && imageValue.startsWith('/uploads/') ? '' : 'is-hidden' %>"
+          src="<%= imageValue && imageValue.startsWith('/uploads/') ? imageValue : '' %>"
+          alt="<%= field.label %> vista previa"
+          data-image-preview="<%= field.name %>">
+        <label>
+          Ruta actual
+          <input name="<%= field.name %>_path" value="<%= imageValue %>" placeholder="/uploads/..." data-image-path="<%= field.name %>">
+        </label>
+        <% if (editItem && editItem[field.name]) { %>
+          <small><%= editItem[field.name] %></small>
+        <% } %>
+      <% } else { %>
+        <label>
+          <%= field.label %>
+            <input
+            name="<%= field.name %>"
+            type="<%= field.type === 'color' ? 'color' : (field.type === 'email' ? 'email' : 'text') %>"
+            class="<%= field.type === 'money' ? 'money-input' : '' %>"
+            value="<%= editItem && editItem[field.name] != null ? (field.type === 'money' ? formatMoney(editItem[field.name]) : editItem[field.name]) : '' %>"
+            <%= field.type === 'money' ? 'inputmode="numeric" data-money-input' : '' %>
+            <%= field.uppercase ? 'data-uppercase' : '' %>
+            <%= field.required ? 'required' : '' %>>
+        </label>
+      <% } %>
+    <% }) %>
+    <div class="actions">
+      <button type="submit"><%= editItem ? 'Guardar cambios' : 'Crear registro' %></button>
+      <% if (editItem) { %><a class="button secondary" href="/<%= pathName %>">Cancelar</a><% } %>
+    </div>
+    </form>
+  <% } %>
+
+  <div class="crud-list-panel" data-crud-search-scope>
+    <% if (meta.isPaged) { %>
+      <form class="crud-searchbar" method="get" action="/<%= pathName %>">
+        <label>
+          Buscar
+          <input type="search" name="q" value="<%= meta.q %>" placeholder="Buscar en <%= title.toLowerCase() %>" autocomplete="off">
+        </label>
+        <button type="submit">Buscar</button>
+        <% if (meta.q) { %><a class="button secondary" href="/<%= pathName %>">Limpiar</a><% } %>
+        <span class="crud-search-count"><%= pageFrom %>-<%= pageTo %> de <%= meta.total %> registros</span>
+      </form>
+    <% } else { %>
+      <div class="crud-searchbar">
+        <label>
+          Buscar
+          <input type="search" placeholder="Buscar en <%= title.toLowerCase() %>" autocomplete="off" data-crud-search>
+        </label>
+        <span class="crud-search-count" data-crud-search-count><%= items.length %> registros</span>
+      </div>
+    <% } %>
+
+  <div class="table-wrap <%= pathName === 'clientes' ? 'cliente-table-wrap' : '' %>">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <% tableFields.forEach((field) => { %><th><%= field.label %></th><% }) %>
+          <% if (!modalCrud) { %><th>Estado</th><% } %>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% items.forEach((item) => { %>
+          <% const itemSearchText = [item.id].concat(fields.map((field) => {
+            if (field.type === 'checkbox') return item[field.name] ? 'Si Activo' : 'No Inactivo';
+            if (field.type === 'select') {
+              const selectedOption = (optionsByField[field.name] || []).find((option) => Number(option.id) === Number(item[field.name]));
+              return selectedOption ? selectedOption.nombre : '';
+            }
+            return item[field.name] == null ? '' : item[field.name];
+          })).join(' '); %>
+          <tr
+            class="<%= modalCrud && !item.activo ? 'row-inactive' : '' %> <%= ['grupo-clientes', 'servicio-grupos', 'personal', 'clientes'].includes(pathName) ? 'selectable-row' : '' %>"
+            data-crud-row
+            data-search="<%= itemSearchText %>"
+            <%- ['grupo-clientes', 'servicio-grupos', 'personal', 'clientes'].includes(pathName) ? `data-related-group-row="${item.id}"` : '' %>>
+            <td><%= item.id %></td>
+            <% tableFields.forEach((field) => { %>
+              <td class="<%= field.type === 'money' ? 'money-cell' : '' %>">
+                <% if (field.type === 'checkbox') { %>
+                  <%= item[field.name] ? 'Si' : 'No' %>
+                <% } else if (field.type === 'image') { %>
+                  <% const tableImageValue = item[field.name] ? String(item[field.name]) : ''; %>
+                  <% if (tableImageValue && tableImageValue.startsWith('/uploads/')) { %><img class="crud-thumb small" src="<%= tableImageValue %>" alt="<%= item.nombre || field.label %>"><% } else { %><%= tableImageValue %><% } %>
+                <% } else if (field.type === 'color') { %>
+                  <span class="color-swatch" style="--swatch-color: <%= item[field.name] || '#ffffff' %>"></span>
+                <% } else if (field.type === 'money') { %>
+                  <%= formatMoney(item[field.name]) %>
+                <% } else if (field.type === 'select') { %>
+                  <% const selectedOption = (optionsByField[field.name] || []).find((option) => Number(option.id) === Number(item[field.name])); %>
+                  <%= selectedOption ? selectedOption.nombre : '' %>
+                <% } else { %>
+                  <%= item[field.name] || '' %>
+                <% } %>
+              </td>
+            <% }) %>
+            <% if (!modalCrud) { %><td><%= item.activo ? 'Activo' : 'Inactivo' %></td><% } %>
+            <td class="cell-actions">
+              <% if (modalCrud) { %>
+                <a class="icon-button" href="/<%= pathName %>?edit=<%= item.id %><%= meta.isPaged ? '&offset=' + meta.offset + pageQuery : '' %>" aria-label="Editar" title="Editar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
+                    <path d="M13.5 6.5l4 4"></path>
+                  </svg>
+                </a>
+                <form action="/<%= pathName %>/<%= item.id %>/toggle" method="post" title="<%= item.activo ? 'Desactivar' : 'Activar' %>">
+                  <label class="toggle-check">
+                    <input type="checkbox" <%= item.activo ? 'checked' : '' %> onchange="this.form.submit()">
+                    <span></span>
+                  </label>
+                </form>
+              <% } else { %>
+                <a href="/<%= pathName %>?edit=<%= item.id %>">Editar</a>
+                <form action="/<%= pathName %>/<%= item.id %>/toggle" method="post">
+                  <button class="link" type="submit"><%= item.activo ? 'Desactivar' : 'Activar' %></button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!items.length) { %><tr data-crud-empty><td colspan="<%= tableColspan %>">Sin registros.</td></tr><% } %>
+        <tr class="is-hidden" data-crud-no-results><td colspan="<%= tableColspan %>">Sin resultados para la busqueda.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <% if (meta.isPaged && meta.total > meta.limit) { %>
+    <div class="pagination-bar">
+      <a class="button secondary <%= meta.offset <= 0 ? 'is-disabled' : '' %>" href="<%= meta.offset <= 0 ? '#' : '/' + pathName + '?offset=' + prevOffset + pageQuery %>">Anterior</a>
+      <span><%= pageFrom %>-<%= pageTo %> de <%= meta.total %></span>
+      <a class="button secondary <%= nextOffset >= meta.total ? 'is-disabled' : '' %>" href="<%= nextOffset >= meta.total ? '#' : '/' + pathName + '?offset=' + nextOffset + pageQuery %>">Siguiente</a>
+    </div>
+  <% } %>
+  <% if (pathName === 'clientes') { %>
+    <% const clientLavadosMeta = relatedClientLavadosMeta || { selectedId: '', limit: 50 }; %>
+    <div class="related-clients-panel is-hidden" data-related-empty>
+      Seleccione un cliente para ver sus lavados relacionados.
+    </div>
+    <% items.forEach((client) => { %>
+      <% const detail = (relatedClientLavadosById && relatedClientLavadosById[String(client.id)]) || { lavados: [], total: 0, offset: 0 }; %>
+      <% const lavadosFrom = detail.total && detail.lavados.length ? detail.offset + 1 : 0; %>
+      <% const lavadosTo = detail.offset + detail.lavados.length; %>
+      <% const lavadosPrev = Math.max(0, detail.offset - clientLavadosMeta.limit); %>
+      <% const lavadosNext = detail.offset + clientLavadosMeta.limit; %>
+      <% const baseRelatedUrl = '/' + pathName + '?related=' + client.id + (meta.q ? '&q=' + encodeURIComponent(meta.q) : '') + (meta.offset ? '&offset=' + meta.offset : ''); %>
+      <section class="related-clients-panel client-related-panel is-hidden" data-related-panel="<%= client.id %>">
+        <div class="section-title compact-title">
+          <div>
+            <h2>Lavados de <%= client.chapa %></h2>
+            <p><%= client.marca_modelo || '' %> - maximo 50 registros por pagina.</p>
+          </div>
+        </div>
+        <div class="table-wrap related-table-wrap cliente-lavados-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Fecha</th>
+                <th>Personal</th>
+                <th>Condicion</th>
+                <th>Pago</th>
+                <th>Estado</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% detail.lavados.forEach((lavado) => { %>
+                <tr class="estado-<%= lavado.estado.toLowerCase() %>">
+                  <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+                  <td><%= formatDateTime(lavado.creado_en) %></td>
+                  <td><%= lavado.personal_nombre || '' %></td>
+                  <td><%= lavado.condicion || '' %></td>
+                  <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
+                  <td><span class="badge <%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span></td>
+                  <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+                </tr>
+              <% }) %>
+              <% if (!detail.lavados.length) { %><tr><td colspan="7">Sin lavados para este cliente.</td></tr><% } %>
+            </tbody>
+          </table>
+        </div>
+        <% if (detail.total > clientLavadosMeta.limit) { %>
+          <div class="pagination-bar">
+            <a class="button secondary <%= detail.offset <= 0 ? 'is-disabled' : '' %>" href="<%= detail.offset <= 0 ? '#' : baseRelatedUrl + '&client_lavados_offset=' + lavadosPrev %>">Anterior</a>
+            <span><%= lavadosFrom %>-<%= lavadosTo %> de <%= detail.total %></span>
+            <a class="button secondary <%= lavadosNext >= detail.total ? 'is-disabled' : '' %>" href="<%= lavadosNext >= detail.total ? '#' : baseRelatedUrl + '&client_lavados_offset=' + lavadosNext %>">Siguiente</a>
+          </div>
+        <% } %>
+      </section>
+    <% }) %>
+  <% } %>
+  <% if (pathName === 'grupo-clientes') { %>
+    <div class="related-clients-panel is-hidden" data-related-empty>
+      Seleccione un grupo de cliente para ver sus clientes relacionados.
+    </div>
+    <% items.forEach((group) => { %>
+      <% const relatedClients = (relatedClientsByGroup && relatedClientsByGroup[String(group.id)]) || []; %>
+      <% const relatedClientsMeta = (relatedClientsMetaByGroup && relatedClientsMetaByGroup[String(group.id)]) || { total: relatedClients.length, offset: 0, limit: 100 }; %>
+      <% const relatedClientsTotal = Number(relatedClientsMeta.total || 0); %>
+      <% const relatedClientsFrom = relatedClientsTotal && relatedClients.length ? Number(relatedClientsMeta.offset || 0) + 1 : 0; %>
+      <% const relatedClientsTo = Number(relatedClientsMeta.offset || 0) + relatedClients.length; %>
+      <% const relatedClientsPrev = Math.max(0, Number(relatedClientsMeta.offset || 0) - Number(relatedClientsMeta.limit || 100)); %>
+      <% const relatedClientsNext = Number(relatedClientsMeta.offset || 0) + Number(relatedClientsMeta.limit || 100); %>
+      <% const baseGroupClientsUrl = '/' + pathName + '?related=' + group.id + (meta.q ? '&q=' + encodeURIComponent(meta.q) : '') + (meta.offset ? '&offset=' + meta.offset : ''); %>
+      <section class="related-clients-panel is-hidden" data-related-panel="<%= group.id %>">
+        <div class="section-title compact-title">
+          <div>
+            <h2>Clientes de <%= group.nombre %></h2>
+            <p><%= relatedClientsTotal %> <%= relatedClientsTotal === 1 ? 'cliente relacionado' : 'clientes relacionados' %></p>
+          </div>
+        </div>
+        <div class="table-wrap related-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Chapa</th>
+                <th>Marca/modelo</th>
+                <th>Nombre</th>
+                <th>RUC</th>
+                <th>Telefono</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% relatedClients.forEach((client) => { %>
+                <tr>
+                  <td><%= client.id %></td>
+                  <td><%= client.chapa || '' %></td>
+                  <td><%= client.marca_modelo || '' %></td>
+                  <td><%= client.nombre || '' %></td>
+                  <td><%= client.ruc || '' %></td>
+                  <td><%= client.telefono || '' %></td>
+                  <td><%= client.email || '' %></td>
+                </tr>
+              <% }) %>
+              <% if (!relatedClients.length) { %>
+                <tr><td colspan="7">Sin clientes relacionados.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+        <% if (relatedClientsTotal > relatedClientsMeta.limit) { %>
+          <div class="pagination-bar">
+            <a class="button secondary <%= relatedClientsMeta.offset <= 0 ? 'is-disabled' : '' %>" href="<%= relatedClientsMeta.offset <= 0 ? '#' : baseGroupClientsUrl + '&group_clients_offset=' + relatedClientsPrev %>">Anterior</a>
+            <span><%= relatedClientsFrom %>-<%= relatedClientsTo %> de <%= relatedClientsTotal %></span>
+            <a class="button secondary <%= relatedClientsNext >= relatedClientsTotal ? 'is-disabled' : '' %>" href="<%= relatedClientsNext >= relatedClientsTotal ? '#' : baseGroupClientsUrl + '&group_clients_offset=' + relatedClientsNext %>">Siguiente</a>
+          </div>
+        <% } %>
+      </section>
+    <% }) %>
+  <% } %>
+  <% if (pathName === 'servicio-grupos') { %>
+    <div class="related-clients-panel is-hidden" data-related-empty>
+      Seleccione un grupo de servicio para ver sus servicios relacionados.
+    </div>
+    <% items.forEach((group) => { %>
+      <% const relatedServices = (relatedServicesByGroup && relatedServicesByGroup[String(group.id)]) || []; %>
+      <section class="related-clients-panel is-hidden" data-related-panel="<%= group.id %>">
+        <div class="section-title compact-title">
+          <div>
+            <h2>Servicios de <%= group.nombre %></h2>
+            <p><%= relatedServices.length %> <%= relatedServices.length === 1 ? 'servicio relacionado' : 'servicios relacionados' %></p>
+          </div>
+        </div>
+        <div class="table-wrap related-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Servicio</th>
+                <th>Precio base</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% relatedServices.forEach((service) => { %>
+                <tr class="<%= service.activo ? '' : 'row-inactive' %>">
+                  <td><%= service.id %></td>
+                  <td><%= service.nombre || '' %></td>
+                  <td class="money-cell"><%= formatMoney(service.precio_base) %></td>
+                  <td><%= service.activo ? 'Activo' : 'Inactivo' %></td>
+                </tr>
+              <% }) %>
+              <% if (!relatedServices.length) { %>
+                <tr><td colspan="4">Sin servicios relacionados.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    <% }) %>
+  <% } %>
+  <% if (pathName === 'personal') { %>
+    <% const personalMeta = relatedPersonalMeta || { selectedId: '', activeTab: 'lavados', limit: 100 }; %>
+    <div class="related-clients-panel is-hidden" data-related-empty>
+      Seleccione un personal para ver sus lavados y vales.
+    </div>
+    <% items.forEach((person) => { %>
+      <% const detail = (relatedPersonalById && relatedPersonalById[String(person.id)]) || { lavados: [], lavadosTotal: 0, lavadosOffset: 0, vales: [], valesTotal: 0, valesOffset: 0 }; %>
+      <% const lavadosFrom = detail.lavadosTotal && detail.lavados.length ? detail.lavadosOffset + 1 : 0; %>
+      <% const lavadosTo = detail.lavadosOffset + detail.lavados.length; %>
+      <% const valesFrom = detail.valesTotal && detail.vales.length ? detail.valesOffset + 1 : 0; %>
+      <% const valesTo = detail.valesOffset + detail.vales.length; %>
+      <% const lavadosPrev = Math.max(0, detail.lavadosOffset - personalMeta.limit); %>
+      <% const lavadosNext = detail.lavadosOffset + personalMeta.limit; %>
+      <% const valesPrev = Math.max(0, detail.valesOffset - personalMeta.limit); %>
+      <% const valesNext = detail.valesOffset + personalMeta.limit; %>
+      <% const baseRelatedUrl = '/' + pathName + '?related=' + person.id; %>
+      <section class="related-clients-panel is-hidden" data-related-panel="<%= person.id %>">
+        <div class="section-title compact-title">
+          <div>
+            <h2>Movimientos de <%= person.nombre %></h2>
+            <p>Lavados y vales, maximo 100 registros por pagina.</p>
+          </div>
+        </div>
+        <div class="tab-buttons" role="tablist">
+          <button type="button" class="secondary is-selected" data-tab-button="lavados-<%= person.id %>">Lavados (<%= detail.lavadosTotal %>)</button>
+          <button type="button" class="secondary" data-tab-button="vales-<%= person.id %>">Vales (<%= detail.valesTotal %>)</button>
+        </div>
+        <div data-tab-panel="lavados-<%= person.id %>">
+          <div class="table-wrap related-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Fecha</th>
+                  <th>Auto</th>
+                  <th>Grupo cliente</th>
+                  <th>Pago</th>
+                  <th>Total</th>
+                  <th>Comision</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% detail.lavados.forEach((lavado) => { %>
+                  <tr class="estado-<%= lavado.estado.toLowerCase() %>">
+                    <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+                    <td><%= formatDateTime(lavado.creado_en) %></td>
+                    <td><strong><%= lavado.chapa %></strong><br><small><%= lavado.marca_modelo || '' %></small></td>
+                    <td><%= lavado.grupo_cliente_nombre || '' %></td>
+                    <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
+                    <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+                    <td class="money-cell"><%= formatMoney(lavado.comision_personal) %></td>
+                  </tr>
+                <% }) %>
+                <% if (!detail.lavados.length) { %><tr><td colspan="7">Sin lavados para este personal.</td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+          <% if (detail.lavadosTotal > personalMeta.limit) { %>
+            <div class="pagination-bar">
+              <a class="button secondary <%= detail.lavadosOffset <= 0 ? 'is-disabled' : '' %>" href="<%= detail.lavadosOffset <= 0 ? '#' : baseRelatedUrl + '&tab=lavados&lavados_offset=' + lavadosPrev + '&vales_offset=' + detail.valesOffset %>">Anterior</a>
+              <span><%= lavadosFrom %>-<%= lavadosTo %> de <%= detail.lavadosTotal %></span>
+              <a class="button secondary <%= lavadosNext >= detail.lavadosTotal ? 'is-disabled' : '' %>" href="<%= lavadosNext >= detail.lavadosTotal ? '#' : baseRelatedUrl + '&tab=lavados&lavados_offset=' + lavadosNext + '&vales_offset=' + detail.valesOffset %>">Siguiente</a>
+            </div>
+          <% } %>
+        </div>
+        <div class="is-hidden" data-tab-panel="vales-<%= person.id %>">
+          <div class="table-wrap related-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Fecha pago</th>
+                  <th>Monto</th>
+                  <th>Forma pago</th>
+                  <th>Estado</th>
+                  <th>Creado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% detail.vales.forEach((vale) => { %>
+                  <tr class="<%= vale.estado === 'ANULADO' ? 'row-inactive' : '' %>">
+                    <td>#<%= vale.id %></td>
+                    <td><%= formatDate(vale.fecha_pago) %></td>
+                    <td class="money-cell"><%= formatMoney(vale.monto) %></td>
+                    <td><%- include('partials/payment_chip', { nombre: vale.forma_pago, icono: vale.forma_pago_icono, color: vale.forma_pago_color }) %></td>
+                    <td><span class="badge <%= vale.estado.toLowerCase() %>"><%= vale.estado %></span></td>
+                    <td><%= formatDateTime(vale.creado_en) %></td>
+                  </tr>
+                <% }) %>
+                <% if (!detail.vales.length) { %><tr><td colspan="6">Sin vales para este personal.</td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+          <% if (detail.valesTotal > personalMeta.limit) { %>
+            <div class="pagination-bar">
+              <a class="button secondary <%= detail.valesOffset <= 0 ? 'is-disabled' : '' %>" href="<%= detail.valesOffset <= 0 ? '#' : baseRelatedUrl + '&tab=vales&lavados_offset=' + detail.lavadosOffset + '&vales_offset=' + valesPrev %>">Anterior</a>
+              <span><%= valesFrom %>-<%= valesTo %> de <%= detail.valesTotal %></span>
+              <a class="button secondary <%= valesNext >= detail.valesTotal ? 'is-disabled' : '' %>" href="<%= valesNext >= detail.valesTotal ? '#' : baseRelatedUrl + '&tab=vales&lavados_offset=' + detail.lavadosOffset + '&vales_offset=' + valesNext %>">Siguiente</a>
+            </div>
+          <% } %>
+        </div>
+      </section>
+    <% }) %>
+  <% } %>
+  </div>
+</section>
+
+<% if (modalCrud) { %>
+  <div class="modal-backdrop <%= editItem ? '' : 'is-hidden' %>" data-crud-modal>
+    <form
+      class="modal-panel crud-modal-panel stack"
+      method="post"
+      action="/<%= pathName %><%= editItem ? '/' + editItem.id : '' %>"
+      <%= fields.some((field) => field.type === 'image') ? 'enctype="multipart/form-data"' : '' %>
+      data-crud-modal-form
+      data-create-action="/<%= pathName %>"
+      data-new-title="<%= newEntityLabel %>">
+      <h2 data-crud-modal-title><%= editItem ? 'Editar ' + entityLabel : newEntityLabel %></h2>
+      <% fields.forEach((field) => { %>
+        <% if (field.type === 'checkbox') { %>
+          <label class="check">
+            <input type="checkbox" name="<%= field.name %>" <%= editItem ? (editItem[field.name] ? 'checked' : '') : 'checked' %>>
+            <span><%= field.label %></span>
+          </label>
+        <% } else if (field.type === 'select') { %>
+          <label>
+            <%= field.label %>
+            <select name="<%= field.name %>">
+              <option value="">Sin grupo</option>
+              <% (optionsByField[field.name] || []).forEach((option) => { %>
+                <option
+                  value="<%= option.id %>"
+                  data-razon-social="<%= option.razon_social || '' %>"
+                  data-ruc="<%= option.ruc || '' %>"
+                  data-direccion="<%= option.direccion || '' %>"
+                  data-telefono="<%= option.telefono || '' %>"
+                  data-email="<%= option.email || '' %>"
+                  <%= editItem && Number(editItem[field.name]) === Number(option.id) ? 'selected' : '' %>><%= option.nombre %></option>
+              <% }) %>
+            </select>
+          </label>
+        <% } else if (field.type === 'image') { %>
+          <label>
+            <%= field.label %>
+            <input
+              name="<%= field.name %>"
+              type="file"
+              accept="image/png"
+              data-image-input="<%= field.name %>"
+              data-image-folder="<%= field.uploadFolder || 'servicio-grupos' %>"
+              <%= field.required && !editItem ? 'required' : '' %>>
+          </label>
+          <% const imageValue = editItem && editItem[field.name] ? String(editItem[field.name]) : ''; %>
+          <img
+            class="crud-thumb <%= imageValue && imageValue.startsWith('/uploads/') ? '' : 'is-hidden' %>"
+            src="<%= imageValue && imageValue.startsWith('/uploads/') ? imageValue : '' %>"
+            alt="<%= field.label %> vista previa"
+            data-image-preview="<%= field.name %>">
+          <label>
+            Ruta actual
+            <input name="<%= field.name %>_path" value="<%= imageValue %>" placeholder="/uploads/..." data-image-path="<%= field.name %>">
+          </label>
+          <% if (editItem && editItem[field.name]) { %>
+            <small><%= editItem[field.name] %></small>
+          <% } %>
+        <% } else { %>
+          <label>
+            <%= field.label %>
+            <input
+              name="<%= field.name %>"
+              type="<%= field.type === 'color' ? 'color' : (field.type === 'email' ? 'email' : 'text') %>"
+              class="<%= field.type === 'money' ? 'money-input' : '' %>"
+              value="<%= editItem && editItem[field.name] != null ? (field.type === 'money' ? formatMoney(editItem[field.name]) : editItem[field.name]) : '' %>"
+              <%= field.type === 'money' ? 'inputmode="numeric" data-money-input' : '' %>
+              <%= field.uppercase ? 'data-uppercase' : '' %>
+              <%= field.required ? 'required' : '' %>>
+          </label>
+        <% } %>
+      <% }) %>
+      <div class="modal-actions">
+        <button type="submit"><%= editItem ? 'Guardar cambios' : 'Crear ' + entityLabel %></button>
+        <button type="button" class="secondary" data-close-crud-modal>Cancelar</button>
+      </div>
+    </form>
+  </div>
+<% } %>
+<%- include('partials/footer') %>

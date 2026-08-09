@@ -1,0 +1,184 @@
+<%- include('partials/header') %>
+<%
+  const safeJson = JSON.stringify(chartData || {}).replace(/</g, '\\u003c');
+  const hasData = Number(metrics.lavados || 0) > 0;
+%>
+<div class="page-head">
+  <div>
+    <h1>Analisis general de lavados</h1>
+    <p>Resumen de lavados, pagos, servicios, clientes y personal</p>
+  </div>
+</div>
+
+<form class="toolbar analysis-filter" method="get" action="/analisis-lavados">
+  <label>
+    Fecha inicio
+    <input type="date" name="fecha_inicio" value="<%= fechaInicio %>">
+  </label>
+  <label>
+    Fecha fin
+    <input type="date" name="fecha_fin" value="<%= fechaFin %>">
+  </label>
+  <button type="submit">Ver</button>
+</form>
+
+<section class="metrics analysis-general-metrics">
+  <article><span>Lavados</span><strong><%= metrics.lavados %></strong></article>
+  <article><span>Total servicios</span><strong><%= formatMoney(metrics.total_servicios) %></strong></article>
+  <article><span>Comision 40%</span><strong><%= formatMoney(metrics.comision) %></strong></article>
+  <article><span>Lavadero 60%</span><strong><%= formatMoney(metrics.saldo_lavadero) %></strong></article>
+  <article><span>Clientes nuevos</span><strong><%= metrics.clientes_nuevos %></strong></article>
+  <article><span>Ticket promedio</span><strong><%= formatMoney(metrics.ticket_promedio) %></strong></article>
+</section>
+
+<% if (!hasData || metrics.creditos_pendientes || metrics.anulados) { %>
+  <section class="analysis-alerts">
+    <% if (!hasData) { %><div class="flash">Sin lavados en el rango seleccionado.</div><% } %>
+    <% if (metrics.creditos_pendientes) { %><div class="flash">Hay <strong><%= metrics.creditos_pendientes %></strong> lavados a credito pendientes en el rango.</div><% } %>
+    <% if (metrics.anulados) { %><div class="flash">Se excluyeron <strong><%= metrics.anulados %></strong> lavados anulados del analisis.</div><% } %>
+  </section>
+<% } %>
+
+<section class="analysis-dashboard-grid">
+  <div class="panel chart-panel chart-panel-wide">
+    <h2>Evolucion diaria</h2>
+    <div class="chart-box"><canvas data-analysis-chart="daily"></canvas></div>
+  </div>
+  <div class="panel chart-panel">
+    <h2>Formas de pago</h2>
+    <div class="chart-box"><canvas data-analysis-chart="payments"></canvas></div>
+  </div>
+  <div class="panel chart-panel">
+    <h2>Servicios mas usados</h2>
+    <div class="chart-box"><canvas data-analysis-chart="services"></canvas></div>
+  </div>
+  <div class="panel chart-panel">
+    <h2>Grupos de servicios</h2>
+    <div class="chart-box"><canvas data-analysis-chart="serviceGroups"></canvas></div>
+  </div>
+  <div class="panel chart-panel">
+    <h2>Grupos de clientes</h2>
+    <div class="chart-box"><canvas data-analysis-chart="clientGroups"></canvas></div>
+  </div>
+  <div class="panel chart-panel">
+    <h2>Personal con mas lavados</h2>
+    <div class="chart-box"><canvas data-analysis-chart="personal"></canvas></div>
+  </div>
+</section>
+
+<section class="grid two analysis-tables">
+  <div>
+    <h2>Formas de pago</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Forma</th><th class="money-cell">Cantidad</th><th class="money-cell">Total</th></tr></thead>
+        <tbody>
+          <% payments.forEach((item) => { %>
+            <tr>
+              <td><%- include('partials/payment_chip', { nombre: item.nombre, icono: item.icono_ruta, color: item.color }) %></td>
+              <td class="money-cell"><%= item.cantidad %></td>
+              <td class="money-cell"><%= formatMoney(item.total) %></td>
+            </tr>
+          <% }) %>
+          <% if (!payments.length) { %><tr><td colspan="3">Sin movimientos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Personal</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Personal</th><th class="money-cell">Lavados</th><th class="money-cell">Total</th><th class="money-cell">Comision</th></tr></thead>
+        <tbody>
+          <% personalRanking.forEach((item) => { %>
+            <tr>
+              <td><%= item.nombre %></td>
+              <td class="money-cell"><%= item.lavados %></td>
+              <td class="money-cell"><%= formatMoney(item.total_servicios) %></td>
+              <td class="money-cell"><%= formatMoney(item.comision) %></td>
+            </tr>
+          <% }) %>
+          <% if (!personalRanking.length) { %><tr><td colspan="4">Sin movimientos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Servicios</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Servicio</th><th class="money-cell">Cantidad</th><th class="money-cell">Total</th></tr></thead>
+        <tbody>
+          <% services.forEach((item) => { %>
+            <tr><td><%= item.nombre %></td><td class="money-cell"><%= item.cantidad %></td><td class="money-cell"><%= formatMoney(item.total) %></td></tr>
+          <% }) %>
+          <% if (!services.length) { %><tr><td colspan="3">Sin movimientos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Grupos de servicios</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Grupo</th><th class="money-cell">Cantidad</th><th class="money-cell">Total</th></tr></thead>
+        <tbody>
+          <% serviceGroups.forEach((item) => { %>
+            <tr><td><%= item.nombre %></td><td class="money-cell"><%= item.cantidad %></td><td class="money-cell"><%= formatMoney(item.total) %></td></tr>
+          <% }) %>
+          <% if (!serviceGroups.length) { %><tr><td colspan="3">Sin movimientos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Grupos de clientes</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Grupo</th><th class="money-cell">Lavados</th><th class="money-cell">Total</th></tr></thead>
+        <tbody>
+          <% clientGroups.forEach((item) => { %>
+            <tr><td><%= item.nombre %></td><td class="money-cell"><%= item.cantidad %></td><td class="money-cell"><%= formatMoney(item.total) %></td></tr>
+          <% }) %>
+          <% if (!clientGroups.length) { %><tr><td colspan="3">Sin movimientos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-title compact-title">
+    <div>
+      <h2>Ultimos 100 lavados</h2>
+      <p><%= formatDate(fechaInicio) %> - <%= formatDate(fechaFin) %></p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Fecha</th><th>Cliente / auto</th><th>Grupo cliente</th><th>Personal</th><th>Pago</th><th>Estado</th><th class="money-cell">Total</th><th class="money-cell">Comision</th></tr></thead>
+      <tbody>
+        <% latestLavados.forEach((lavado) => { %>
+          <tr class="estado-<%= lavado.estado.toLowerCase() %>">
+            <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+            <td><%= formatDateTime(lavado.creado_en) %></td>
+            <td><strong><%= lavado.chapa %></strong><br><small><%= lavado.marca_modelo || lavado.cliente_nombre || '' %></small></td>
+            <td><%= lavado.grupo_cliente_nombre || '' %></td>
+            <td><%= lavado.personal_nombre %></td>
+            <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
+            <td><span class="badge <%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span></td>
+            <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+            <td class="money-cell"><%= formatMoney(lavado.comision_personal) %></td>
+          </tr>
+        <% }) %>
+        <% if (!latestLavados.length) { %><tr><td colspan="9">Sin lavados en el rango.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script id="analysis-lavados-data" type="application/json"><%- safeJson %></script>
+<script src="/vendor/chart.js/chart.umd.js"></script>
+<script src="/js/analisis_lavados.js"></script>
+<%- include('partials/footer') %>

@@ -1,0 +1,82 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Facturas</h1>
+        <p>Facturas para impresion en preimpreso</p>
+      </div>
+  <div class="actions">
+    <a class="button secondary" href="/facturasend/config">Configuracion electronica</a>
+    <a class="button" href="/facturas/nueva">Nueva factura libre</a>
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/facturas">
+  <label>
+    Fecha
+    <input type="date" name="fecha" value="<%= fecha %>">
+  </label>
+  <button type="submit">Ver</button>
+  <% if (fecha) { %><a class="button secondary" href="/facturas">Todas</a><% } %>
+</form>
+
+<section class="grid one">
+  <div class="table-wrap factura-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Fecha</th>
+          <th>Nro factura</th>
+          <th>Cliente</th>
+          <th>RUC</th>
+          <th>Origen</th>
+          <th>Electronica</th>
+          <th>Total</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% facturas.forEach((factura) => { %>
+          <tr>
+            <td>#<%= factura.id %></td>
+            <td><%= formatDate(factura.fecha_emision) %></td>
+            <td><%= factura.numero || '-' %></td>
+            <td><strong><%= factura.cliente_nombre %></strong></td>
+            <td><%= factura.cliente_ruc || '' %></td>
+            <td><span class="badge <%= factura.origen.toLowerCase() %>"><%= factura.origen %></span></td>
+            <td>
+              <span class="badge <%= factura.electronica_cdc ? 'success' : 'muted' %>">
+                <%= factura.electronica_estado || (factura.electronica_cdc ? 'Generado' : 'Sin emitir') %>
+              </span>
+              <% if (factura.electronica_numero) { %><br><small><%= factura.electronica_numero %></small><% } %>
+            </td>
+            <td class="money-cell"><%= formatMoney(factura.total) %></td>
+            <td class="cell-actions">
+              <a class="icon-button" href="/facturas/<%= factura.id %>/editar" aria-label="Editar" title="Editar">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
+                  <path d="M13.5 6.5l4 4"></path>
+                </svg>
+              </a>
+              <a class="icon-button pdf-button" href="/facturas/<%= factura.id %>/pdf" aria-label="PDF" title="PDF" target="_blank">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <path d="M14 2v6h6"></path>
+                  <path d="M8 13h2a2 2 0 0 0 0-4H8v8"></path>
+                  <path d="M13 9v8h1a3 3 0 0 0 0-6h-1"></path>
+                </svg>
+              </a>
+              <% if (hasFacturaSendConfig && !factura.electronica_cdc) { %>
+                <form method="post" action="/facturas/<%= factura.id %>/electronica/emitir">
+                  <button class="icon-button electronic-button" type="submit" aria-label="Emitir electronica" title="Emitir electronica">FE</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (!facturas.length) { %><tr><td colspan="9">Sin facturas.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+<%- include('../partials/footer') %>

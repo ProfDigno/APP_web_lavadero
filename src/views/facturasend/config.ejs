@@ -1,0 +1,60 @@
+<%- include('../partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Configuracion electronica</h1>
+    <p>Credenciales de FacturaSend para emitir documentos electronicos.</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/facturas">Volver</a>
+    <% if (configRow) { %>
+      <form method="post" action="/facturasend/config/test">
+        <button type="submit">Probar conexion</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<section class="grid two">
+  <form class="panel stack" method="post" action="/facturasend/config/import">
+    <h2>Importar configuracion</h2>
+    <label>
+      Ruta del archivo JSON
+      <input name="config_path" value="<%= defaultPath %>">
+    </label>
+    <label>
+      O pegar JSON
+      <textarea name="config_json" rows="10" placeholder="Pegue aqui el contenido de facturasend-config.json"></textarea>
+    </label>
+    <h3>Ajuste manual</h3>
+    <label>
+      URL API
+      <input name="base_url" value="<%= configRow ? configRow.base_url : '' %>" placeholder="https://api.facturasend.com.py">
+    </label>
+    <label>
+      Tenant
+      <input name="tenant" value="<%= configRow ? configRow.tenant : '' %>" placeholder="empresaficticia_1528">
+    </label>
+    <label>
+      API Key
+      <input name="api_key" placeholder="Pegue la API Key si desea reemplazar la importada">
+    </label>
+    <button type="submit">Importar FacturaSend</button>
+  </form>
+
+  <section class="panel stack">
+    <h2>Configuracion activa</h2>
+    <% if (configRow) { %>
+      <dl class="detail-list compact-detail">
+        <div><dt>URL API</dt><dd><%= configRow.base_url %></dd></div>
+        <div><dt>Tenant</dt><dd><%= configRow.tenant %></dd></div>
+        <div><dt>API Key</dt><dd><%= configRow.api_key_masked %></dd></div>
+        <div><dt>RUC emisor</dt><dd><%= configRow.params.ruc || '-' %></dd></div>
+        <div><dt>Razon social</dt><dd><%= configRow.params.razonSocial || '-' %></dd></div>
+        <div><dt>Timbrado</dt><dd><%= configRow.params.timbradoNumero || '-' %></dd></div>
+      </dl>
+    <% } else { %>
+      <p class="empty">Sin configuracion electronica activa.</p>
+    <% } %>
+  </section>
+</section>
+<%- include('../partials/footer') %>

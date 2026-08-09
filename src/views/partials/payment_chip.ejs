@@ -1,0 +1,10 @@
+<span class="payment-chip" style="--payment-color: <%= color || '#687385' %>" title="<%= nombre || 'SIN PAGO' %>" aria-label="<%= nombre || 'SIN PAGO' %>">
+  <span class="payment-chip-icon">
+    <% if (icono && String(icono).startsWith('/uploads/')) { %>
+      <img src="<%= icono %>" alt="">
+    <% } else { %>
+      <%= paymentIconLabel(icono) %>
+    <% } %>
+  </span>
+  <span class="payment-chip-text"><%= nombre || 'SIN PAGO' %></span>
+</span>

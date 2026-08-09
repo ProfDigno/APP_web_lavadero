@@ -1,0 +1,237 @@
+<%- include('partials/header') %>
+<%
+  const resumenRows = typeof resumen !== 'undefined' && Array.isArray(resumen) ? resumen : [];
+  const diasRows = typeof dias !== 'undefined' && Array.isArray(dias) ? dias : [];
+  const selectedSummary = selectedPersonalId ? resumenRows[0] : null;
+  const dashboard = selectedSummary || totales || { lavados: 0, servicios: 0, comision: 0, vales: 0, saldo: 0 };
+  const maxLavados = Math.max(1, ...resumenRows.map((item) => Number(item.lavados || 0)), ...diasRows.map((item) => Number(item.lavados || 0)));
+  const maxComision = Math.max(1, ...resumenRows.map((item) => Number(item.comision || 0)), ...diasRows.map((item) => Number(item.comision || 0)));
+  const maxVales = Math.max(1, ...resumenRows.map((item) => Number(item.vales || 0)), ...diasRows.map((item) => Number(item.vales || 0)));
+  const maxSaldo = Math.max(1, ...resumenRows.map((item) => Math.abs(Number(item.saldo || 0))), ...diasRows.map((item) => Math.abs(Number(item.saldo || 0))));
+  const barWidth = (value, max) => Number(value || 0) === 0 ? 0 : Math.max(2, Math.round((Math.abs(Number(value || 0)) / max) * 100));
+  const detailRows = resumenRows;
+%>
+<div class="page-head">
+  <div>
+    <h1>Analisis de personal</h1>
+    <p>Lavados, comisiones, vales y saldo por rango de fechas</p>
+  </div>
+</div>
+
+<form class="toolbar analysis-filter" method="get" action="/analisis-personal">
+  <label>
+    Fecha inicio
+    <input type="date" name="fecha_inicio" value="<%= fechaInicio %>">
+  </label>
+  <label>
+    Fecha fin
+    <input type="date" name="fecha_fin" value="<%= fechaFin %>">
+  </label>
+  <label>
+    Personal
+    <select name="personal_id">
+      <option value="todos" <%= !selectedPersonalId ? 'selected' : '' %>>Todos</option>
+      <% personal.forEach((persona) => { %>
+        <option value="<%= persona.id %>" <%= Number(selectedPersonalId || 0) === Number(persona.id) ? 'selected' : '' %>><%= persona.nombre %></option>
+      <% }) %>
+    </select>
+  </label>
+  <button type="submit">Ver</button>
+</form>
+
+<section class="metrics analysis-metrics">
+  <article><span>Lavados</span><strong><%= dashboard.lavados || 0 %></strong></article>
+  <article><span>Total servicios</span><strong><%= formatMoney(dashboard.servicios) %></strong></article>
+  <article><span>Comision 40%</span><strong><%= formatMoney(dashboard.comision) %></strong></article>
+  <article><span>Vales</span><strong><%= formatMoney(dashboard.vales) %></strong></article>
+  <article class="<%= Number(dashboard.saldo || 0) < 0 ? 'metric-warning' : '' %>"><span>Saldo</span><strong><%= formatMoney(dashboard.saldo) %></strong></article>
+</section>
+
+<% if (selectedPersonalId) { %>
+  <section class="analysis-grid">
+    <div class="panel">
+      <div class="section-title compact-title">
+        <div>
+          <h2>Graficos por dia</h2>
+          <p><%= formatDate(fechaInicio) %> - <%= formatDate(fechaFin) %></p>
+        </div>
+      </div>
+      <div class="analysis-chart">
+        <% diasRows.forEach((dia) => { %>
+          <div class="analysis-chart-row">
+            <strong><%= formatDate(dia.fecha) %></strong>
+            <div class="analysis-bars">
+              <span>Lavados <b><%= dia.lavados %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar" style="width: <%= barWidth(dia.lavados, maxLavados) %>%"></div></div>
+              <span>Comision <b><%= formatMoney(dia.comision) %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar commission" style="width: <%= barWidth(dia.comision, maxComision) %>%"></div></div>
+              <span>Vales <b><%= formatMoney(dia.vales) %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar voucher" style="width: <%= barWidth(dia.vales, maxVales) %>%"></div></div>
+              <span>Saldo <b><%= formatMoney(dia.saldo) %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar <%= Number(dia.saldo || 0) < 0 ? 'negative' : 'balance' %>" style="width: <%= barWidth(dia.saldo, maxSaldo) %>%"></div></div>
+            </div>
+          </div>
+        <% }) %>
+        <% if (!diasRows.length) { %><p class="empty">Sin movimientos para graficar en el rango.</p><% } %>
+      </div>
+    </div>
+  </section>
+<% } else { %>
+  <section class="analysis-grid">
+    <div class="panel">
+      <h2>Comparacion entre personales</h2>
+      <div class="analysis-comparison">
+        <% resumenRows.forEach((item) => { %>
+          <article class="analysis-person-card">
+            <div>
+              <strong><%= item.personal_nombre %></strong>
+              <small><%= item.lavados %> lavados</small>
+            </div>
+            <div class="analysis-bars">
+              <span>Lavados <b><%= item.lavados %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar" style="width: <%= barWidth(item.lavados, maxLavados) %>%"></div></div>
+              <span>Comision <b><%= formatMoney(item.comision) %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar commission" style="width: <%= barWidth(item.comision, maxComision) %>%"></div></div>
+              <span>Vales <b><%= formatMoney(item.vales) %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar voucher" style="width: <%= barWidth(item.vales, maxVales) %>%"></div></div>
+              <span>Saldo <b><%= formatMoney(item.saldo) %></b></span>
+              <div class="analysis-bar-track"><div class="analysis-bar <%= Number(item.saldo || 0) < 0 ? 'negative' : 'balance' %>" style="width: <%= barWidth(item.saldo, maxSaldo) %>%"></div></div>
+            </div>
+          </article>
+        <% }) %>
+        <% if (!resumenRows.length) { %><p class="empty">Sin personales activos.</p><% } %>
+      </div>
+    </div>
+  </section>
+<% } %>
+
+<section class="panel">
+  <div class="section-title compact-title">
+    <div>
+      <h2>Resumen por personal</h2>
+      <p><%= selectedPersonalId ? 'Personal seleccionado' : 'Seleccione una fila para ver el detalle' %></p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Personal</th>
+          <th class="money-cell">Lavados</th>
+          <th class="money-cell">Total servicios</th>
+          <th class="money-cell">Comision 40%</th>
+          <th class="money-cell">Vales</th>
+          <th class="money-cell">Saldo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% resumenRows.forEach((item) => { %>
+          <tr class="selectable-row <%= selectedPersonalId && Number(selectedPersonalId) === Number(item.personal_id) ? 'is-selected' : '' %>" data-related-group-row="<%= item.personal_id %>">
+            <td><%= item.personal_nombre %></td>
+            <td class="money-cell"><%= item.lavados %></td>
+            <td class="money-cell"><%= formatMoney(item.servicios) %></td>
+            <td class="money-cell"><%= formatMoney(item.comision) %></td>
+            <td class="money-cell"><%= formatMoney(item.vales) %></td>
+            <td class="money-cell <%= Number(item.saldo || 0) < 0 ? 'negative-money' : '' %>"><strong><%= formatMoney(item.saldo) %></strong></td>
+          </tr>
+        <% }) %>
+        <% if (!resumenRows.length) { %><tr><td colspan="6">Sin movimientos.</td></tr><% } %>
+      </tbody>
+      <% if (!selectedPersonalId && resumenRows.length) { %>
+        <tfoot>
+          <tr>
+            <th>Total</th>
+            <td class="money-cell"><strong><%= totales.lavados %></strong></td>
+            <td class="money-cell"><strong><%= formatMoney(totales.servicios) %></strong></td>
+            <td class="money-cell"><strong><%= formatMoney(totales.comision) %></strong></td>
+            <td class="money-cell"><strong><%= formatMoney(totales.vales) %></strong></td>
+            <td class="money-cell"><strong><%= formatMoney(totales.saldo) %></strong></td>
+          </tr>
+        </tfoot>
+      <% } %>
+    </table>
+  </div>
+</section>
+
+<div class="related-clients-panel <%= selectedPersonalId ? 'is-hidden' : '' %>" data-related-empty>
+  Seleccione un personal para ver sus movimientos.
+</div>
+
+<% detailRows.forEach((item) => { %>
+  <% const detail = (detailsByPersonal && detailsByPersonal[String(item.personal_id)]) || { lavados: [], comisiones: [], vales: [] }; %>
+  <section class="related-clients-panel <%= selectedPersonalId ? '' : 'is-hidden' %>" data-related-panel="<%= item.personal_id %>">
+    <div class="section-title compact-title">
+      <div>
+        <h2>Movimientos de <%= item.personal_nombre %></h2>
+        <p><%= formatDate(fechaInicio) %> - <%= formatDate(fechaFin) %></p>
+      </div>
+    </div>
+    <div class="tab-buttons" role="tablist">
+      <button type="button" class="secondary is-selected" data-tab-button="analisis-lavados-<%= item.personal_id %>">Lavados (<%= detail.lavados.length %>)</button>
+      <button type="button" class="secondary" data-tab-button="analisis-comisiones-<%= item.personal_id %>">Comisiones (<%= detail.comisiones.length %>)</button>
+      <button type="button" class="secondary" data-tab-button="analisis-vales-<%= item.personal_id %>">Vales (<%= detail.vales.length %>)</button>
+    </div>
+    <div data-tab-panel="analisis-lavados-<%= item.personal_id %>">
+      <div class="table-wrap related-table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Fecha</th><th>Auto</th><th>Grupo cliente</th><th>Pago</th><th>Estado</th><th>Total</th><th>Comision</th></tr></thead>
+          <tbody>
+            <% detail.lavados.forEach((lavado) => { %>
+              <tr class="estado-<%= lavado.estado.toLowerCase() %>">
+                <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
+                <td><%= formatDateTime(lavado.creado_en) %></td>
+                <td><strong><%= lavado.chapa %></strong><br><small><%= lavado.marca_modelo || '' %></small></td>
+                <td><%= lavado.grupo_cliente_nombre || '' %></td>
+                <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
+                <td><span class="badge <%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span></td>
+                <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+                <td class="money-cell"><%= formatMoney(lavado.comision_personal) %></td>
+              </tr>
+            <% }) %>
+            <% if (!detail.lavados.length) { %><tr><td colspan="8">Sin lavados para este personal.</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="is-hidden" data-tab-panel="analisis-comisiones-<%= item.personal_id %>">
+      <div class="table-wrap related-table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th class="money-cell">Lavados</th><th class="money-cell">Total servicios</th><th class="money-cell">Comision 40%</th><th class="money-cell">Vales</th><th class="money-cell">Saldo</th></tr></thead>
+          <tbody>
+            <% detail.comisiones.forEach((comision) => { %>
+              <tr>
+                <td><%= formatDate(comision.fecha) %></td>
+                <td class="money-cell"><%= comision.total_lavados_emitidos %></td>
+                <td class="money-cell"><%= formatMoney(comision.total_servicios) %></td>
+                <td class="money-cell"><%= formatMoney(comision.total_comision_40) %></td>
+                <td class="money-cell"><%= formatMoney(comision.total_vales) %></td>
+                <td class="money-cell <%= Number(comision.saldo_personal || 0) < 0 ? 'negative-money' : '' %>"><strong><%= formatMoney(comision.saldo_personal) %></strong></td>
+              </tr>
+            <% }) %>
+            <% if (!detail.comisiones.length) { %><tr><td colspan="6">Sin comisiones para este personal.</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="is-hidden" data-tab-panel="analisis-vales-<%= item.personal_id %>">
+      <div class="table-wrap related-table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Fecha pago</th><th class="money-cell">Monto</th><th>Forma pago</th><th>Creado</th></tr></thead>
+          <tbody>
+            <% detail.vales.forEach((vale) => { %>
+              <tr>
+                <td>#<%= vale.id %></td>
+                <td><%= formatDate(vale.fecha_pago) %></td>
+                <td class="money-cell"><%= formatMoney(vale.monto) %></td>
+                <td><%- include('partials/payment_chip', { nombre: vale.forma_pago, icono: vale.forma_pago_icono, color: vale.forma_pago_color }) %></td>
+                <td><%= formatDateTime(vale.creado_en) %></td>
+              </tr>
+            <% }) %>
+            <% if (!detail.vales.length) { %><tr><td colspan="5">Sin vales para este personal.</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+<% }) %>
+<%- include('partials/footer') %>

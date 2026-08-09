@@ -1,0 +1,70 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Inicio</h1>
+    <p>Resumen operativo del dia</p>
+  </div>
+  <a class="button" href="/lavados">Nuevo lavado</a>
+</div>
+
+<form class="toolbar" method="get" action="/">
+  <label>
+    Fecha
+    <input type="date" name="fecha" value="<%= fecha %>">
+  </label>
+  <button type="submit">Ver</button>
+  <a class="button secondary" href="/caja?fecha=<%= fecha %>">Ver caja</a>
+</form>
+
+<section class="metrics">
+  <article><span>Ingresos caja</span><strong><%= formatMoney(caja.resumen.ingresos) %></strong></article>
+  <article><span>Egresos caja</span><strong><%= formatMoney(caja.resumen.egresos) %></strong></article>
+  <article><span>Neto caja</span><strong><%= formatMoney(caja.resumen.neto) %></strong></article>
+  <article><span>Efectivo a contar</span><strong><%= formatMoney(caja.resumen.efectivoAContar) %></strong></article>
+</section>
+
+<section class="metrics">
+  <article><span>Emitidos</span><strong><%= resumen.emitidos %></strong></article>
+  <article><span>Creditos</span><strong><%= resumen.creditos %></strong></article>
+  <article><span>Pagados</span><strong><%= resumen.pagados %></strong></article>
+  <article><span>Anulados</span><strong><%= resumen.anulados %></strong></article>
+  <article><span>Total</span><strong><%= formatMoney(resumen.total) %></strong></article>
+  <article><span>Personal 40%</span><strong><%= formatMoney(resumen.comision) %></strong></article>
+  <article><span>Lavadero 60%</span><strong><%= formatMoney(resumen.saldo) %></strong></article>
+</section>
+
+<section class="grid two">
+  <div>
+    <h2>Comisiones</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Personal</th><th>Lavados</th><th>Servicios</th><th>Comision</th></tr></thead>
+        <tbody>
+          <% comisiones.forEach((item) => { %>
+            <tr>
+              <td><%= item.personal_nombre %></td>
+              <td><%= item.total_lavados_emitidos %></td>
+              <td><%= formatMoney(item.total_servicios) %></td>
+              <td><%= formatMoney(item.total_comision_40) %></td>
+            </tr>
+          <% }) %>
+          <% if (!comisiones.length) { %><tr><td colspan="4">Sin movimientos.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <h2>Ultimos lavados</h2>
+    <div class="list">
+      <% ultimos.forEach((lavado) => { %>
+        <a class="row-link" href="/lavados/<%= lavado.id %>">
+          <strong>#<%= lavado.id %> - <%= lavado.chapa %></strong>
+          <span><%= lavado.personal_nombre %> · <%= lavado.estado %> · <%= formatMoney(lavado.total) %></span>
+          <%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %>
+        </a>
+      <% }) %>
+      <% if (!ultimos.length) { %><p class="empty">Todavia no hay lavados.</p><% } %>
+    </div>
+  </div>
+</section>
+<%- include('partials/footer') %>
