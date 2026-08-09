@@ -57,6 +57,31 @@ function button(text, data) {
   return { text, callback_data: data };
 }
 
+function twoColumns(buttons) {
+  const rows = [];
+  for (let index = 0; index < buttons.length; index += 2) rows.push(buttons.slice(index, index + 2));
+  return rows;
+}
+
+function parseMoney(value) {
+  const raw = String(value || "").trim().replace(/[^\d.,-]/g, "");
+  if (!raw) return 0;
+  const lastDot = raw.lastIndexOf(".");
+  const lastComma = raw.lastIndexOf(",");
+  let normalized = raw;
+  if (lastDot >= 0 && lastComma >= 0) {
+    const decimal = lastDot > lastComma ? "." : ",";
+    const thousands = decimal === "." ? "," : ".";
+    normalized = raw.split(thousands).join("").replace(decimal, ".");
+  } else if (lastComma >= 0) {
+    normalized = raw.replace(/\./g, "").replace(",", ".");
+  } else if (lastDot >= 0 && raw.length - lastDot - 1 === 3) {
+    normalized = raw.replace(/\./g, "");
+  }
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? Math.round(amount) : 0;
+}
+
 function send(bot, chatId, text, options = {}) {
   return bot.sendMessage(chatId, text, options);
 }
@@ -157,7 +182,7 @@ async function askPersonal(bot, chatId, session) {
   const result = await query(`select id, nombre from personal where activo = true order by nombre`);
   if (!result.rows.length) return send(bot, chatId, "No hay personal activo cargado en el sistema.");
   session.step = "WAITING_PERSONAL";
-  const rows = result.rows.map((item) => [button(item.nombre, `personal:${item.id}`)]);
+  const rows = twoColumns(result.rows.map((item) => button(item.nombre, `personal:${item.id}`)));
   return send(bot, chatId, "¿Quien va a lavar el auto?", { reply_markup: keyboard(rows) });
 }
 
@@ -165,7 +190,7 @@ async function askClientGroup(bot, chatId, session) {
   const result = await query(`select id, nombre from grupo_cliente where activo = true order by nombre`);
   session.step = "WAITING_CLIENT_GROUP";
   const rows = [[button("Sin grupo", "clientgroup:0")]];
-  result.rows.forEach((item) => rows.push([button(item.nombre, `clientgroup:${item.id}`)]));
+  rows.push(...twoColumns(result.rows.map((item) => button(item.nombre, `clientgroup:${item.id}`))));
   return send(bot, chatId, "Selecciona un grupo de cliente (opcional):", { reply_markup: keyboard(rows) });
 }
 
@@ -174,7 +199,7 @@ async function askServiceGroup(bot, chatId, session) {
   if (!result.rows.length) return askServices(bot, chatId, session, null);
   session.step = "WAITING_SERVICE_GROUP";
   return send(bot, chatId, "Selecciona el grupo de servicio:", {
-    reply_markup: keyboard(result.rows.map((item) => [button(item.nombre, `servicegroup:${item.id}`)]))
+    reply_markup: keyboard(twoColumns(result.rows.map((item) => button(item.nombre, `servicegroup:${item.id}`))))
   });
 }
 
@@ -190,14 +215,11 @@ async function askServices(bot, chatId, session, groupId) {
     params
   );
   if (!result.rows.length) return send(bot, chatId, "No hay servicios activos en ese grupo.");
-  session.step = "WAITING_SERVICES";
+  session.step = "WAITING_SERVICE";
   session.availableServices = result.rows;
-  const rows = result.rows.map((item) => {
-    const selected = session.serviceIds?.includes(Number(item.id));
-    return [button(`${selected ? "[x]" : "[ ]"} ${item.nombre} - ${formatMoney(item.precio_base)}`, `service:${item.id}`)];
-  });
-  rows.push([button("Terminar seleccion", "services:done")]);
-  return send(bot, chatId, "Selecciona uno o varios servicios:", { reply_markup: keyboard(rows) });
+  const rows = twoColumns(result.rows.map((item) => button(`${item.nombre} - ${formatMoney(item.precio_base)}`, `service:${item.id}`)));
+  rows.push([button("Otro servicio / precio manual", "service:custom")]);
+  return send(bot, chatId, "Selecciona un servicio:", { reply_markup: keyboard(rows) });
 }
 
 async function askPayment(bot, chatId, session) {
@@ -255,7 +277,15 @@ async function createLavado(session, chatId, from) {
       : { rows: [] };
     cliente.es_credito = Boolean(grupoClienteResult.rows[0]?.es_credito);
 
-    const serviceIds = session.serviceIds.map(Number);
+    let serviceIds = session.serviceIds.map(Number);
+    if (session.customService) {
+      const custom = await client.query(
+        `insert into servicios (servicio_grupo_id, nombre, precio_base, activo, creado_por)
+         values (null, $1, $2, true, $3) returning id`,
+        [session.customService.nombre, session.customService.precio, creadoPor]
+      );
+      serviceIds = [custom.rows[0].id];
+    }
     const services = await client.query(
       `select id, nombre, precio_base from servicios where activo = true and id = any($1::int[]) order by nombre`,
       [serviceIds]
@@ -341,6 +371,20 @@ async function handleText(bot, msg) {
     session.newClient.marcaModelo = text.toUpperCase();
     return askClientGroup(bot, chatId, session);
   }
+  if (session.step === "WAITING_CUSTOM_SERVICE_DESCRIPTION") {
+    if (!text) return send(bot, chatId, "Escribi una descripcion para el servicio:");
+    session.customService = { nombre: text.toUpperCase() };
+    session.step = "WAITING_CUSTOM_SERVICE_PRICE";
+    return send(bot, chatId, "Escribi el precio del servicio, por ejemplo: 25000");
+  }
+  if (session.step === "WAITING_CUSTOM_SERVICE_PRICE") {
+    const price = parseMoney(text);
+    if (price <= 0) return send(bot, chatId, "El precio debe ser mayor a cero. Escribilo nuevamente:");
+    session.customService.precio = price;
+    session.serviceIds = [];
+    session.services = [{ id: null, nombre: session.customService.nombre, precio_base: price }];
+    return askPayment(bot, chatId, session);
+  }
   return send(bot, chatId, "Usa los botones del mensaje o escribe /cancelar para salir.");
 }
 
@@ -386,15 +430,12 @@ async function handleCallback(bot, callbackQuery) {
       return askServices(bot, chatId, session, session.serviceGroupId);
     }
     if (action === "service") {
+      if (rawValue === "custom") {
+        session.step = "WAITING_CUSTOM_SERVICE_DESCRIPTION";
+        return send(bot, chatId, "Escribi la descripcion del nuevo servicio:");
+      }
       const serviceId = Number(rawValue);
-      session.serviceIds = session.serviceIds || [];
-      session.serviceIds = session.serviceIds.includes(serviceId)
-        ? session.serviceIds.filter((id) => id !== serviceId)
-        : [...session.serviceIds, serviceId];
-      return askServices(bot, chatId, session, session.serviceGroupId || null);
-    }
-    if (action === "services" && rawValue === "done") {
-      if (!session.serviceIds?.length) return send(bot, chatId, "Selecciona al menos un servicio.");
+      session.serviceIds = [serviceId];
       const result = await query(`select id, nombre, precio_base from servicios where activo = true and id = any($1::int[])`, [session.serviceIds]);
       session.services = result.rows;
       return askPayment(bot, chatId, session);
