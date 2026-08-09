@@ -14,5 +14,12 @@ module.exports = {
     login: process.env.ADMIN_LOGIN || "admin",
     password: process.env.ADMIN_PASSWORD || "admin123",
     name: process.env.ADMIN_NAME || "Administrador"
+  },
+  telegram: {
+    token: process.env.TELEGRAM_BOT_TOKEN || "",
+    allowedChatIds: String(process.env.TELEGRAM_ALLOWED_CHAT_IDS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
   }
 };

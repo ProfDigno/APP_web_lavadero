@@ -9,6 +9,7 @@ const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
 const config = require("./config");
 const { query, withTransaction } = require("./db");
+const { startTelegramBot } = require("./telegram-bot");
 
 const app = express();
 const servicioGrupoUploadsDir = path.join(__dirname, "..", "public", "uploads", "servicio-grupos");
@@ -3347,4 +3348,5 @@ app.use((error, req, res, next) => {
 
 app.listen(config.port, () => {
   console.log(`Lavadero listo en http://localhost:${config.port}`);
+  startTelegramBot();
 });
