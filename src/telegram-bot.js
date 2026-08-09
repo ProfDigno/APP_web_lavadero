@@ -128,7 +128,7 @@ async function handlePhoto(bot, msg) {
   if (!isAllowed(chatId)) return send(bot, chatId, `Chat no autorizado. Tu ID es ${chatId}.`);
 
   const session = newSession(chatId);
-  await send(bot, chatId, "Estoy leyendo la chapa de la foto. Puede tardar unos segundos...");
+  await send(bot, chatId, "Estoy leyendo la chapa de la foto. Puede tardar unos segundos...", { reply_markup: removeKeyboard() });
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "lavadero-telegram-"));
   try {
     const photo = msg.photo[msg.photo.length - 1];
