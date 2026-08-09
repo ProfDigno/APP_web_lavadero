@@ -230,14 +230,13 @@ async function createLavado(session, chatId, from) {
       clienteId = inserted.rows[0].id;
     }
 
-    const clienteResult = await client.query(
-      `select c.*, coalesce(g.es_credito, false) as es_credito
-       from clientes c left join grupo_cliente g on g.id = c.grupo_cliente_id
-       where c.id = $1 for update`,
-      [clienteId]
-    );
+    const clienteResult = await client.query(`select * from clientes where id = $1 for update`, [clienteId]);
     const cliente = clienteResult.rows[0];
     if (!cliente) throw new Error("Cliente no encontrado.");
+    const grupoClienteResult = cliente.grupo_cliente_id
+      ? await client.query(`select coalesce(es_credito, false) as es_credito from grupo_cliente where id = $1`, [cliente.grupo_cliente_id])
+      : { rows: [] };
+    cliente.es_credito = Boolean(grupoClienteResult.rows[0]?.es_credito);
 
     const serviceIds = session.serviceIds.map(Number);
     const services = await client.query(
