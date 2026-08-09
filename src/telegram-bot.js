@@ -53,6 +53,14 @@ function keyboard(rows) {
   return { inline_keyboard: rows };
 }
 
+function replyKeyboard(rows, oneTime = true) {
+  return { keyboard: rows, resize_keyboard: true, one_time_keyboard: oneTime };
+}
+
+function removeKeyboard() {
+  return { remove_keyboard: true };
+}
+
 function button(text, data) {
   return { text, callback_data: data };
 }
@@ -182,24 +190,25 @@ async function askPersonal(bot, chatId, session) {
   const result = await query(`select id, nombre from personal where activo = true order by nombre`);
   if (!result.rows.length) return send(bot, chatId, "No hay personal activo cargado en el sistema.");
   session.step = "WAITING_PERSONAL";
-  const rows = twoColumns(result.rows.map((item) => button(item.nombre, `personal:${item.id}`)));
-  return send(bot, chatId, "¿Quien va a lavar el auto?", { reply_markup: keyboard(rows) });
+  const rows = twoColumns(result.rows.map((item) => item.nombre));
+  return send(bot, chatId, "¿Quien va a lavar el auto?", { reply_markup: replyKeyboard(rows) });
 }
 
 async function askClientGroup(bot, chatId, session) {
   const result = await query(`select id, nombre from grupo_cliente where activo = true order by nombre`);
   session.step = "WAITING_CLIENT_GROUP";
-  const rows = [[button("Sin grupo", "clientgroup:0")]];
-  rows.push(...twoColumns(result.rows.map((item) => button(item.nombre, `clientgroup:${item.id}`))));
-  return send(bot, chatId, "Selecciona un grupo de cliente (opcional):", { reply_markup: keyboard(rows) });
+  const rows = [["Sin grupo"]];
+  rows.push(...twoColumns(result.rows.map((item) => item.nombre)));
+  return send(bot, chatId, "Selecciona un grupo de cliente (opcional):", { reply_markup: replyKeyboard(rows) });
 }
 
 async function askServiceGroup(bot, chatId, session) {
   const result = await query(`select id, nombre from servicio_grupo where activo = true order by nombre`);
   if (!result.rows.length) return askServices(bot, chatId, session, null);
   session.step = "WAITING_SERVICE_GROUP";
+  session.availableServiceGroups = result.rows;
   return send(bot, chatId, "Selecciona el grupo de servicio:", {
-    reply_markup: keyboard(twoColumns(result.rows.map((item) => button(item.nombre, `servicegroup:${item.id}`))))
+    reply_markup: replyKeyboard(twoColumns(result.rows.map((item) => item.nombre)))
   });
 }
 
@@ -217,9 +226,9 @@ async function askServices(bot, chatId, session, groupId) {
   if (!result.rows.length) return send(bot, chatId, "No hay servicios activos en ese grupo.");
   session.step = "WAITING_SERVICE";
   session.availableServices = result.rows;
-  const rows = twoColumns(result.rows.map((item) => button(`${item.nombre} - ${formatMoney(item.precio_base)}`, `service:${item.id}`)));
-  rows.push([button("Otro servicio / precio manual", "service:custom")]);
-  return send(bot, chatId, "Selecciona un servicio:", { reply_markup: keyboard(rows) });
+  const rows = result.rows.map((item) => [`${item.nombre} - ${formatMoney(item.precio_base)}`]);
+  rows.push(["Otro servicio / precio manual"]);
+  return send(bot, chatId, "Selecciona un servicio:", { reply_markup: replyKeyboard(rows) });
 }
 
 async function askPayment(bot, chatId, session) {
@@ -236,8 +245,9 @@ async function askPayment(bot, chatId, session) {
   );
   if (!result.rows.length) return send(bot, chatId, "No hay formas de pago activas.");
   session.step = "WAITING_PAYMENT";
+  session.availablePayments = result.rows;
   return send(bot, chatId, "Selecciona la forma de pago:", {
-    reply_markup: keyboard(result.rows.map((item) => [button(item.nombre, `payment:${item.id}`)]))
+    reply_markup: replyKeyboard(result.rows.map((item) => [item.nombre]))
   });
 }
 
@@ -251,7 +261,7 @@ async function showSummary(bot, chatId, session) {
     bot,
     chatId,
     `Resumen del lavado:\n\nChapa: ${session.client.chapa}\nAuto: ${session.client.marca_modelo}\nLavador: ${session.personalNombre}\nServicios:\n${services}\nTotal: ${formatMoney(total)}\nForma de pago: ${pago}`,
-    { reply_markup: keyboard([[button("CONFIRMAR Y GUARDAR", "wash:confirm")], [button("CANCELAR", "wash:cancel")]]) }
+    { reply_markup: replyKeyboard([["CONFIRMAR Y GUARDAR"], ["CANCELAR"]]) }
   );
 }
 
@@ -367,15 +377,76 @@ async function handleText(bot, msg) {
     if (session.plate.length < 4) return send(bot, chatId, "La chapa parece demasiado corta. Escribila nuevamente.");
     return continueWithPlate(bot, chatId, session);
   }
+  if (session.step === "WAITING_NEW_MAKE" && text.startsWith("Usar ") && session.vehicleSuggestion) {
+    const suggestion = [session.vehicleSuggestion.make, session.vehicleSuggestion.model].filter(Boolean).join(" ");
+    session.newClient.marcaModelo = suggestion.toUpperCase();
+    return askClientGroup(bot, chatId, session);
+  }
   if (session.step === "WAITING_NEW_MAKE") {
     session.newClient.marcaModelo = text.toUpperCase();
     return askClientGroup(bot, chatId, session);
+  }
+  if (session.step === "WAITING_PERSONAL") {
+    const result = await query(`select id, nombre from personal where activo = true and nombre = $1`, [text]);
+    if (!result.rows[0]) return send(bot, chatId, "Selecciona un personal usando los botones del teclado.");
+    session.personalId = result.rows[0].id;
+    session.personalNombre = result.rows[0].nombre;
+    return askServiceGroup(bot, chatId, session);
+  }
+  if (session.step === "WAITING_CLIENT_GROUP") {
+    if (text === "Sin grupo") {
+      session.newClient.grupoClienteId = null;
+    } else {
+      const result = await query(`select id, nombre, coalesce(es_credito, false) as es_credito from grupo_cliente where activo = true and nombre = $1`, [text]);
+      if (!result.rows[0]) return send(bot, chatId, "Selecciona un grupo de cliente usando los botones del teclado.");
+      session.newClient.grupoClienteId = result.rows[0].id;
+    }
+    const group = session.newClient.grupoClienteId
+      ? await query(`select nombre, coalesce(es_credito, false) as es_credito from grupo_cliente where id = $1`, [session.newClient.grupoClienteId])
+      : { rows: [] };
+    session.client = { ...session.newClient, marca_modelo: session.newClient.marcaModelo, grupo_nombre: group.rows[0]?.nombre || "Sin grupo", es_credito: Boolean(group.rows[0]?.es_credito) };
+    await send(bot, chatId, `Cliente nuevo preparado: ${session.client.chapa} - ${session.client.marca_modelo}`);
+    return askPersonal(bot, chatId, session);
+  }
+  if (session.step === "WAITING_SERVICE_GROUP") {
+    const result = await query(`select id, nombre from servicio_grupo where activo = true and nombre = $1`, [text]);
+    if (!result.rows[0]) return send(bot, chatId, "Selecciona un grupo de servicio usando los botones del teclado.");
+    session.serviceGroupId = result.rows[0].id;
+    return askServices(bot, chatId, session, session.serviceGroupId);
+  }
+  if (session.step === "WAITING_SERVICE") {
+    if (text === "Otro servicio / precio manual") {
+      session.step = "WAITING_CUSTOM_SERVICE_DESCRIPTION";
+      return send(bot, chatId, "Escribi la descripcion del nuevo servicio:", { reply_markup: removeKeyboard() });
+    }
+    const selected = (session.availableServices || []).find((item) => `${item.nombre} - ${formatMoney(item.precio_base)}` === text);
+    if (!selected) return send(bot, chatId, "Selecciona un servicio usando los botones del teclado.");
+    session.serviceIds = [Number(selected.id)];
+    session.services = [selected];
+    return askPayment(bot, chatId, session);
+  }
+  if (session.step === "WAITING_PAYMENT") {
+    const selected = (session.availablePayments || []).find((item) => item.nombre === text);
+    if (!selected) return send(bot, chatId, "Selecciona una forma de pago usando los botones del teclado.");
+    session.formaPagoId = selected.id;
+    session.formaPagoNombre = selected.nombre;
+    return showSummary(bot, chatId, session);
+  }
+  if (session.step === "WAITING_CONFIRMATION") {
+    if (text === "CANCELAR") {
+      clearSession(chatId);
+      return send(bot, chatId, "Operacion cancelada.", { reply_markup: removeKeyboard() });
+    }
+    if (text !== "CONFIRMAR Y GUARDAR") return send(bot, chatId, "Usa CONFIRMAR Y GUARDAR o CANCELAR.");
+    const lavadoId = await createLavado(session, chatId, msg.from);
+    clearSession(chatId);
+    return send(bot, chatId, `Lavado #${lavadoId} registrado correctamente.`, { reply_markup: removeKeyboard() });
   }
   if (session.step === "WAITING_CUSTOM_SERVICE_DESCRIPTION") {
     if (!text) return send(bot, chatId, "Escribi una descripcion para el servicio:");
     session.customService = { nombre: text.toUpperCase() };
     session.step = "WAITING_CUSTOM_SERVICE_PRICE";
-    return send(bot, chatId, "Escribi el precio del servicio, por ejemplo: 25000");
+    return send(bot, chatId, "Escribi el precio del servicio, por ejemplo: 25000", { reply_markup: removeKeyboard() });
   }
   if (session.step === "WAITING_CUSTOM_SERVICE_PRICE") {
     const price = parseMoney(text);
