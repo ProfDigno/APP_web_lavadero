@@ -53,10 +53,6 @@ function keyboard(rows) {
   return { inline_keyboard: rows };
 }
 
-function replyKeyboard(rows, oneTime = true) {
-  return { keyboard: rows, resize_keyboard: true, one_time_keyboard: oneTime };
-}
-
 function removeKeyboard() {
   return { remove_keyboard: true };
 }
@@ -176,39 +172,41 @@ async function continueWithPlate(bot, chatId, session) {
     return askPersonal(bot, chatId, session);
   }
 
-  session.newClient = { chapa: session.plate };
-  session.step = "WAITING_NEW_MAKE";
   const suggestion = [session.vehicleSuggestion?.make, session.vehicleSuggestion?.model].filter(Boolean).join(" ");
-  return send(bot, chatId, suggestion
-    ? `No existe ese cliente. Detecte como marca/modelo: ${suggestion}\n¿Querés usar ese dato o escribirlo manualmente?`
-    : "No existe ese cliente. Escribi la marca y modelo del auto:", suggestion
-    ? { reply_markup: keyboard([[button(`Usar ${suggestion}`, "vehicle:use")], [button("Escribir manualmente", "vehicle:edit")]]) }
-    : {});
+  session.newClient = { chapa: session.plate, marcaModelo: suggestion ? suggestion.toUpperCase() : "" };
+  if (suggestion) {
+    session.step = "WAITING_CLIENT_GROUP";
+    await send(bot, chatId, `No existe ese cliente. Detecte automaticamente: ${suggestion}\nUsare ese dato para el nuevo cliente.`, {
+      reply_markup: keyboard([[button("Corregir marca/modelo", "vehicle:edit")]])
+    });
+    return askClientGroup(bot, chatId, session);
+  }
+  session.step = "WAITING_NEW_MAKE";
+  return send(bot, chatId, "No pude detectar la marca/modelo. Escribi ese dato, por favor.", { reply_markup: removeKeyboard() });
 }
 
 async function askPersonal(bot, chatId, session) {
   const result = await query(`select id, nombre from personal where activo = true order by nombre`);
   if (!result.rows.length) return send(bot, chatId, "No hay personal activo cargado en el sistema.");
   session.step = "WAITING_PERSONAL";
-  const rows = twoColumns(result.rows.map((item) => item.nombre));
-  return send(bot, chatId, "¿Quien va a lavar el auto?", { reply_markup: replyKeyboard(rows) });
+  const rows = twoColumns(result.rows.map((item) => button(item.nombre, `personal:${item.id}`)));
+  return send(bot, chatId, "¿Quien va a lavar el auto?", { reply_markup: keyboard(rows) });
 }
 
 async function askClientGroup(bot, chatId, session) {
   const result = await query(`select id, nombre from grupo_cliente where activo = true order by nombre`);
   session.step = "WAITING_CLIENT_GROUP";
-  const rows = [["Sin grupo"]];
-  rows.push(...twoColumns(result.rows.map((item) => item.nombre)));
-  return send(bot, chatId, "Selecciona un grupo de cliente (opcional):", { reply_markup: replyKeyboard(rows) });
+  const rows = [[button("Sin grupo", "clientgroup:0")]];
+  rows.push(...twoColumns(result.rows.map((item) => button(item.nombre, `clientgroup:${item.id}`))));
+  return send(bot, chatId, "Selecciona un grupo de cliente (opcional):", { reply_markup: keyboard(rows) });
 }
 
 async function askServiceGroup(bot, chatId, session) {
   const result = await query(`select id, nombre from servicio_grupo where activo = true order by nombre`);
   if (!result.rows.length) return askServices(bot, chatId, session, null);
   session.step = "WAITING_SERVICE_GROUP";
-  session.availableServiceGroups = result.rows;
   return send(bot, chatId, "Selecciona el grupo de servicio:", {
-    reply_markup: replyKeyboard(twoColumns(result.rows.map((item) => item.nombre)))
+    reply_markup: keyboard(twoColumns(result.rows.map((item) => button(item.nombre, `servicegroup:${item.id}`))))
   });
 }
 
@@ -226,9 +224,9 @@ async function askServices(bot, chatId, session, groupId) {
   if (!result.rows.length) return send(bot, chatId, "No hay servicios activos en ese grupo.");
   session.step = "WAITING_SERVICE";
   session.availableServices = result.rows;
-  const rows = result.rows.map((item) => [`${item.nombre} - ${formatMoney(item.precio_base)}`]);
-  rows.push(["Otro servicio / precio manual"]);
-  return send(bot, chatId, "Selecciona un servicio:", { reply_markup: replyKeyboard(rows) });
+  const rows = result.rows.map((item) => [button(`${item.nombre} - ${formatMoney(item.precio_base)}`, `service:${item.id}`)]);
+  rows.push([button("Otro servicio / precio manual", "service:custom")]);
+  return send(bot, chatId, "Selecciona un servicio:", { reply_markup: keyboard(rows) });
 }
 
 async function askPayment(bot, chatId, session) {
@@ -245,9 +243,8 @@ async function askPayment(bot, chatId, session) {
   );
   if (!result.rows.length) return send(bot, chatId, "No hay formas de pago activas.");
   session.step = "WAITING_PAYMENT";
-  session.availablePayments = result.rows;
   return send(bot, chatId, "Selecciona la forma de pago:", {
-    reply_markup: replyKeyboard(result.rows.map((item) => [item.nombre]))
+    reply_markup: keyboard(result.rows.map((item) => [button(item.nombre, `payment:${item.id}`)]))
   });
 }
 
@@ -261,7 +258,7 @@ async function showSummary(bot, chatId, session) {
     bot,
     chatId,
     `Resumen del lavado:\n\nChapa: ${session.client.chapa}\nAuto: ${session.client.marca_modelo}\nLavador: ${session.personalNombre}\nServicios:\n${services}\nTotal: ${formatMoney(total)}\nForma de pago: ${pago}`,
-    { reply_markup: replyKeyboard([["CONFIRMAR Y GUARDAR"], ["CANCELAR"]]) }
+    { reply_markup: keyboard([[button("CONFIRMAR Y GUARDAR", "wash:confirm")], [button("CANCELAR", "wash:cancel")]]) }
   );
 }
 
@@ -362,12 +359,12 @@ async function handleText(bot, msg) {
   if (text === "/mi_id") return send(bot, chatId, `Tu ID de Telegram es: ${chatId}`);
   if (text === "/cancelar") {
     clearSession(chatId);
-    return send(bot, chatId, "Operacion cancelada.");
+    return send(bot, chatId, "Operacion cancelada.", { reply_markup: removeKeyboard() });
   }
   if (!isAllowed(chatId)) return send(bot, chatId, `Chat no autorizado. Tu ID es ${chatId}.`);
   if (text === "/start" || text === "/nuevo") {
     newSession(chatId);
-    return send(bot, chatId, "Envia una foto del auto para comenzar un nuevo lavado.");
+    return send(bot, chatId, "Envia una foto del auto para comenzar un nuevo lavado.", { reply_markup: removeKeyboard() });
   }
 
   const session = getSession(chatId);
