@@ -8,3 +8,4 @@ npm-debug.log*
 operaciones_backup_*.json
 Lista_cliente.xlsx
 tmp/
+*.traineddata

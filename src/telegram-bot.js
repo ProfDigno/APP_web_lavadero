@@ -2,7 +2,6 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const TelegramBot = require("node-telegram-bot-api");
-const { createWorker } = require("tesseract.js");
 const config = require("./config");
 const { query, withTransaction } = require("./db");
 
@@ -70,18 +69,29 @@ async function answer(bot, callbackQuery, text) {
   }
 }
 
-async function recognizePlate(filePath) {
-  const worker = await createWorker("eng");
-  try {
-    const result = await worker.recognize(filePath);
-    const candidates = String(result.data.text || "")
-      .split(/\s+/)
-      .map(normalizePlate)
-      .filter((value) => value.length >= 4 && value.length <= 10);
-    return candidates.sort((a, b) => b.length - a.length)[0] || "";
-  } finally {
-    await worker.terminate();
-  }
+async function recognizeVehicle(filePath) {
+  if (!config.plateRecognizer.token) throw new Error("Falta PLATE_RECOGNIZER_TOKEN en .env.");
+  const formData = new FormData();
+  formData.append("upload", new Blob([await fs.promises.readFile(filePath)], { type: "image/jpeg" }), path.basename(filePath));
+  formData.append("regions", "py");
+  formData.append("mmc", "true");
+  const response = await fetch("https://api.platerecognizer.com/v1/plate-reader/", {
+    method: "POST",
+    headers: { Authorization: `Token ${config.plateRecognizer.token}` },
+    body: formData
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.message || body.detail || `Plate Recognizer respondio HTTP ${response.status}.`);
+  const result = Array.isArray(body.results) ? body.results[0] : null;
+  return {
+    plate: normalizePlate(result?.plate),
+    vehicle: {
+      make: String(result?.vehicle?.make || "").trim(),
+      model: String(result?.vehicle?.model || "").trim(),
+      color: String(result?.vehicle?.color || "").trim()
+    },
+    score: Number(result?.score || 0)
+  };
 }
 
 async function handlePhoto(bot, msg) {
@@ -94,14 +104,16 @@ async function handlePhoto(bot, msg) {
   try {
     const photo = msg.photo[msg.photo.length - 1];
     const imagePath = await bot.downloadFile(photo.file_id, tempDir);
-    const detected = await recognizePlate(imagePath);
-    if (!detected) {
+    const detected = await recognizeVehicle(imagePath);
+    if (!detected.plate) {
       session.step = "WAITING_PLATE";
       return send(bot, chatId, "No pude leer la chapa. Escribila manualmente, por favor.");
     }
-    session.plate = detected;
+    session.plate = detected.plate;
+    session.vehicleSuggestion = detected.vehicle;
     session.step = "CONFIRM_PLATE";
-    await send(bot, chatId, `Detecte la chapa: ${detected}\n¿Es correcta?`, {
+    const vehicleText = [detected.vehicle.make, detected.vehicle.model, detected.vehicle.color].filter(Boolean).join(" ");
+    await send(bot, chatId, `Detecte la chapa: ${detected.plate}${vehicleText ? `\nVehiculo detectado: ${vehicleText}` : ""}\n¿Es correcta?`, {
       reply_markup: keyboard([[button("Si, continuar", "plate:confirm"), button("Corregir", "plate:edit")]])
     });
   } catch (error) {
@@ -133,7 +145,12 @@ async function continueWithPlate(bot, chatId, session) {
 
   session.newClient = { chapa: session.plate };
   session.step = "WAITING_NEW_MAKE";
-  return send(bot, chatId, "No existe ese cliente. Escribi la marca y modelo del auto:");
+  const suggestion = [session.vehicleSuggestion?.make, session.vehicleSuggestion?.model].filter(Boolean).join(" ");
+  return send(bot, chatId, suggestion
+    ? `No existe ese cliente. Detecte como marca/modelo: ${suggestion}\n¿Querés usar ese dato o escribirlo manualmente?`
+    : "No existe ese cliente. Escribi la marca y modelo del auto:", suggestion
+    ? { reply_markup: keyboard([[button(`Usar ${suggestion}`, "vehicle:use")], [button("Escribir manualmente", "vehicle:edit")]]) }
+    : {});
 }
 
 async function askPersonal(bot, chatId, session) {
@@ -339,6 +356,15 @@ async function handleCallback(bot, callbackQuery) {
     if (action === "plate" && rawValue === "edit") {
       session.step = "WAITING_PLATE";
       return send(bot, chatId, "Escribi la chapa correcta:");
+    }
+    if (action === "vehicle" && rawValue === "use") {
+      const suggestion = [session.vehicleSuggestion?.make, session.vehicleSuggestion?.model].filter(Boolean).join(" ");
+      if (!suggestion) return send(bot, chatId, "Escribi la marca y modelo del auto:");
+      session.newClient.marcaModelo = suggestion.toUpperCase();
+      return askClientGroup(bot, chatId, session);
+    }
+    if (action === "vehicle" && rawValue === "edit") {
+      return send(bot, chatId, "Escribi la marca y modelo del auto:");
     }
     if (action === "clientgroup") {
       session.newClient.grupoClienteId = rawValue === "0" ? null : Number(rawValue);

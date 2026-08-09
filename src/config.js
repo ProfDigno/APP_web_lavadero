@@ -21,5 +21,8 @@ module.exports = {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean)
+  },
+  plateRecognizer: {
+    token: process.env.PLATE_RECOGNIZER_TOKEN || ""
   }
 };
