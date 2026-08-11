@@ -1,6 +1,6 @@
 {
   "name": "app-web-lavadero",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Aplicacion web local para gestion de lavadero de autos.",
   "main": "src/server.js",
   "scripts": {

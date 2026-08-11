@@ -4,6 +4,23 @@
   const clientSearch = document.querySelector("[data-client-search]");
   const clientResults = document.querySelector("[data-client-results]");
 
+  function isRowInteractiveTarget(target) {
+    return Boolean(target.closest("a, button, form, input, select, textarea"));
+  }
+
+  document.addEventListener("click", (event) => {
+    const row = event.target.closest("[data-row-link]");
+    if (!row || isRowInteractiveTarget(event.target)) return;
+    window.location.assign(row.dataset.rowLink);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const row = event.target.closest("[data-row-link]");
+    if (!row || event.target !== row || !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    window.location.assign(row.dataset.rowLink);
+  });
+
   function fillIfBlank(input, value) {
     if (!input || input.value.trim() || !value) return;
     input.value = value;
@@ -749,6 +766,75 @@
       wireLine(line);
     });
     recalc();
+  }
+
+  const newWashForm = document.querySelector("[data-new-wash-form]");
+  const newWashModal = document.querySelector("[data-new-wash-modal]");
+  if (newWashForm && newWashModal) {
+    const fields = {
+      auto: newWashModal.querySelector("[data-new-wash-auto]"),
+      client: newWashModal.querySelector("[data-new-wash-client]"),
+      personal: newWashModal.querySelector("[data-new-wash-personal]"),
+      services: newWashModal.querySelector("[data-new-wash-services]"),
+      total: newWashModal.querySelector("[data-new-wash-total]")
+    };
+    const confirmButton = newWashModal.querySelector("[data-new-wash-confirm]");
+    const cancelButton = newWashModal.querySelector("[data-new-wash-cancel]");
+
+    function closeNewWashModal() {
+      newWashModal.classList.add("is-hidden");
+    }
+
+    function selectedClient() {
+      const select = newWashForm.querySelector("[data-client-select]");
+      const option = select?.options[select.selectedIndex];
+      if (option?.value) {
+        return {
+          auto: [option.dataset.chapa, option.dataset.marcaModelo].filter(Boolean).join(" - "),
+          client: option.dataset.nombre || option.textContent.trim()
+        };
+      }
+      return {
+        auto: [
+          newWashForm.querySelector("[name='nueva_chapa']")?.value.trim(),
+          newWashForm.querySelector("[name='nuevo_marca_modelo']")?.value.trim()
+        ].filter(Boolean).join(" - "),
+        client: newWashForm.querySelector("[name='nuevo_nombre']")?.value.trim() || "Sin nombre"
+      };
+    }
+
+    function populateNewWashModal() {
+      const client = selectedClient();
+      const personalButton = newWashForm.querySelector("[data-personal-buttons] .is-selected");
+      const services = Array.from(newWashForm.querySelectorAll("[data-services-list] .service-line")).map((line) => {
+        const select = line.querySelector("[data-service-price]");
+        const option = select?.options[select.selectedIndex];
+        const price = line.querySelector("[data-price-input]")?.value.trim();
+        return option?.value ? `${option.textContent.replace(/\s*\([^)]*\)\s*$/, "").trim()} - ${formatGuarani(price)}` : "";
+      }).filter(Boolean);
+
+      fields.auto.textContent = client.auto || "Sin datos";
+      fields.client.textContent = client.client || "Sin nombre";
+      fields.personal.textContent = personalButton?.textContent.trim() || "Sin seleccionar";
+      fields.services.textContent = services.join("; ") || "Sin servicios";
+      fields.total.textContent = newWashForm.querySelector("[data-total]")?.textContent.trim() || "Gs. 0";
+    }
+
+    newWashForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      populateNewWashModal();
+      newWashModal.classList.remove("is-hidden");
+      confirmButton.focus();
+    });
+
+    confirmButton.addEventListener("click", () => newWashForm.submit());
+    cancelButton.addEventListener("click", closeNewWashModal);
+    newWashModal.addEventListener("click", (event) => {
+      if (event.target === newWashModal) closeNewWashModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !newWashModal.classList.contains("is-hidden")) closeNewWashModal();
+    });
   }
 
   const paymentModal = document.querySelector("[data-payment-modal]");

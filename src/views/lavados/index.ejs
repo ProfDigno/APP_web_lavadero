@@ -12,7 +12,7 @@
 
 <section class="panel">
   <h2>Nuevo lavado</h2>
-  <form method="post" action="/lavados" class="stack wash-form">
+  <form method="post" action="/lavados" class="stack wash-form" data-new-wash-form>
     <div class="grid one">
       <label>
         Buscar cliente existente
@@ -150,6 +150,24 @@
   </form>
 </section>
 
+<div class="modal-backdrop is-hidden" data-new-wash-modal>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="new-wash-modal-title">
+    <h2 id="new-wash-modal-title">Confirmar nuevo lavado</h2>
+    <dl class="modal-facts">
+      <dt>Auto</dt><dd data-new-wash-auto></dd>
+      <dt>Cliente</dt><dd data-new-wash-client></dd>
+      <dt>Personal</dt><dd data-new-wash-personal></dd>
+      <dt>Servicios</dt><dd data-new-wash-services></dd>
+      <dt>Total</dt><dd data-new-wash-total></dd>
+    </dl>
+    <p>¿Desea guardar este lavado?</p>
+    <div class="modal-actions">
+      <button type="button" data-new-wash-confirm>SI</button>
+      <button type="button" class="secondary" data-new-wash-cancel>NO</button>
+    </div>
+  </div>
+</div>
+
 <section>
   <div class="section-title">
     <h2>Lavados registrados</h2>
@@ -166,7 +184,11 @@
       <thead><tr><th>#</th><th>Auto</th><th>Personal</th><th>Pago</th></tr></thead>
       <tbody>
         <% lavados.forEach((lavado) => { %>
-          <tr class="wash-row estado-<%= lavado.estado.toLowerCase() %>">
+          <tr
+            class="wash-row wash-row-link estado-<%= lavado.estado.toLowerCase() %>"
+            data-row-link="/lavados/<%= lavado.id %>"
+            tabindex="0"
+            role="link">
             <td><a href="/lavados/<%= lavado.id %>">#<%= lavado.id %></a></td>
             <td class="wash-auto">
               <span class="wash-status-title estado-<%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span>

@@ -5,6 +5,7 @@
     <p><%= lavado.chapa %> - <%= lavado.marca_modelo %></p>
   </div>
   <div class="actions">
+    <a class="button secondary" href="/lavados">Volver</a>
     <% if (lavado.estado !== 'ANULADO') { %>
       <a class="button" href="/facturas/nueva?lavado_id=<%= lavado.id %>">Facturar</a>
     <% } %>

@@ -71,6 +71,7 @@ app.use(
 
 app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
+  res.locals.appVersion = config.version;
   res.locals.flash = req.session.flash || null;
   delete req.session.flash;
   res.locals.formatMoney = formatMoney;

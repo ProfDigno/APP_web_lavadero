@@ -1,6 +1,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
+const packageInfo = require("../package.json");
 
 const appEnv = String(process.env.APP_ENV || "production").trim().toLowerCase();
 const isLocal = appEnv === "local";
@@ -19,6 +20,7 @@ function localTelegramToken() {
 const telegramToken = localTelegramToken() || (isLocal ? "" : process.env.TELEGRAM_BOT_TOKEN || "");
 
 module.exports = {
+  version: packageInfo.version,
   appEnv,
   port: Number(process.env.PORT || 3000),
   sessionSecret: process.env.SESSION_SECRET || "lavadero-local-secret",
