@@ -1,6 +1,25 @@
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
+
+const appEnv = String(process.env.APP_ENV || "production").trim().toLowerCase();
+const isLocal = appEnv === "local";
+
+function localTelegramToken() {
+  if (!isLocal) return "";
+  try {
+    const content = fs.readFileSync(path.join(__dirname, "..", "servidor.txt"), "utf8");
+    const match = content.match(/\b\d{8,12}:[A-Za-z0-9_-]{20,}\b/);
+    return match ? match[0] : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+const telegramToken = localTelegramToken() || (isLocal ? "" : process.env.TELEGRAM_BOT_TOKEN || "");
 
 module.exports = {
+  appEnv,
   port: Number(process.env.PORT || 3000),
   sessionSecret: process.env.SESSION_SECRET || "lavadero-local-secret",
   db: {
@@ -16,7 +35,8 @@ module.exports = {
     name: process.env.ADMIN_NAME || "Administrador"
   },
   telegram: {
-    token: process.env.TELEGRAM_BOT_TOKEN || "",
+    token: telegramToken,
+    universalPin: String(process.env.TELEGRAM_UNIVERSAL_PIN || "").trim(),
     allowedChatIds: String(process.env.TELEGRAM_ALLOWED_CHAT_IDS || "")
       .split(",")
       .map((value) => value.trim())

@@ -1,5 +1,6 @@
 node_modules/
 .env
+servidor.txt
 server.log
 server-error.log
 server.err.log

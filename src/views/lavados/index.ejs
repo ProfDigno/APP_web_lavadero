@@ -58,7 +58,11 @@
       <div class="grid two">
         <label>Chapa <input name="nueva_chapa" value="<%= formData.nueva_chapa || '' %>" autocomplete="off" data-uppercase></label>
         <label>Marca/modelo <input name="nuevo_marca_modelo" value="<%= formData.nuevo_marca_modelo || '' %>" data-uppercase></label>
-        <label>RUC <input name="nuevo_ruc" value="<%= formData.nuevo_ruc || '' %>" data-uppercase></label>
+        <label>
+          RUC
+          <input name="nuevo_ruc" value="<%= formData.nuevo_ruc || '' %>" data-uppercase>
+          <small class="invoice-ruc-status" data-quick-ruc-status></small>
+        </label>
         <label>Nombre <input name="nuevo_nombre" value="<%= formData.nuevo_nombre || '' %>" data-uppercase></label>
         <label>Telefono <input name="nuevo_telefono" value="<%= formData.nuevo_telefono || '' %>" data-uppercase></label>
         <label>Direccion <input name="nuevo_direccion" value="<%= formData.nuevo_direccion || '' %>" data-uppercase></label>
@@ -118,7 +122,7 @@
               <option value="<%= servicio.id %>" data-price="<%= servicio.precio_base %>" data-service-group-id="<%= servicio.servicio_grupo_id || '' %>" <%= String(selectedServicioId || '') === String(servicio.id) ? 'selected' : '' %>><%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %> (<%= new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 }).format(Number(servicio.precio_base || 0)) %>)</option>
             <% }) %>
           </select>
-          <input name="precio" value="<%= formPrecios[index] || '' %>" inputmode="decimal" placeholder="Precio" required data-price-input>
+          <input name="precio" value="<%= formPrecios[index] || '' %>" inputmode="numeric" pattern="[0-9]*" placeholder="Precio" required data-price-input>
           <button class="icon danger" type="button" data-remove-service aria-label="Quitar servicio">x</button>
         </div>
         <% }) %>
@@ -131,7 +135,7 @@
               <option value="<%= servicio.id %>" data-price="<%= servicio.precio_base %>" data-service-group-id="<%= servicio.servicio_grupo_id || '' %>"><%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %> (<%= new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 }).format(Number(servicio.precio_base || 0)) %>)</option>
             <% }) %>
           </select>
-          <input name="precio" inputmode="decimal" placeholder="Precio" required data-price-input>
+          <input name="precio" inputmode="numeric" pattern="[0-9]*" placeholder="Precio" required data-price-input>
           <button class="icon danger" type="button" data-remove-service aria-label="Quitar servicio">x</button>
         </div>
       </template>

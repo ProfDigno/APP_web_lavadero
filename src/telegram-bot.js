@@ -25,8 +25,42 @@ function chatIdOf(msg) {
   return String(msg.chat?.id || msg.from?.id || "");
 }
 
-function isAllowed(chatId) {
-  return config.telegram.allowedChatIds.includes(String(chatId));
+async function isAllowed(chatId) {
+  const normalizedChatId = String(chatId);
+  if (config.telegram.allowedChatIds.includes(normalizedChatId)) return true;
+  const result = await query(
+    `select chat_id from telegram_autorizaciones where chat_id = $1 and activo = true`,
+    [normalizedChatId]
+  );
+  return Boolean(result.rows[0]);
+}
+
+async function authorizeChat(msg) {
+  const chatId = chatIdOf(msg);
+  await query(
+    `insert into telegram_autorizaciones (chat_id, nombre_usuario, nombre_visible)
+     values ($1, $2, $3)
+     on conflict (chat_id) do update set
+       nombre_usuario = excluded.nombre_usuario,
+       nombre_visible = excluded.nombre_visible,
+       ultimo_acceso = now(),
+       activo = true`,
+    [
+      chatId,
+      msg.from?.username ? String(msg.from.username) : null,
+      [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") || null
+    ]
+  );
+}
+
+function isUniversalPin(text) {
+  return Boolean(config.telegram.universalPin) && /^\d+$/.test(text) && text === config.telegram.universalPin;
+}
+
+function authorizationMessage() {
+  return config.telegram.universalPin
+    ? "Este chat no esta autorizado. Escribi la sena numerica para habilitarlo."
+    : "Este chat no esta autorizado. Falta configurar la sena numerica del bot.";
 }
 
 function getSession(chatId) {
@@ -86,6 +120,16 @@ function parseMoney(value) {
   return Number.isFinite(amount) ? Math.round(amount) : 0;
 }
 
+function normalizeRuc(value) {
+  const text = String(value || "").trim().replace(/\s+/g, "").replace(/[.,]/g, "");
+  if (/^\d{2,9}$/.test(text) && text.length > 8) return `${text.slice(0, -1)}-${text.slice(-1)}`;
+  return text;
+}
+
+function isBasicRuc(value) {
+  return /^\d{1,8}(?:-\d)?$/.test(value);
+}
+
 function send(bot, chatId, text, options = {}) {
   return bot.sendMessage(chatId, text, options);
 }
@@ -125,7 +169,7 @@ async function recognizeVehicle(filePath) {
 
 async function handlePhoto(bot, msg) {
   const chatId = chatIdOf(msg);
-  if (!isAllowed(chatId)) return send(bot, chatId, `Chat no autorizado. Tu ID es ${chatId}.`);
+  if (!(await isAllowed(chatId))) return send(bot, chatId, authorizationMessage());
 
   const session = newSession(chatId);
   await send(bot, chatId, "Estoy leyendo la chapa de la foto. Puede tardar unos segundos...", { reply_markup: removeKeyboard() });
@@ -353,6 +397,105 @@ async function createLavado(session, chatId, from) {
   });
 }
 
+async function getLavadoParaFactura(lavadoId) {
+  const result = await query(
+    `select l.id, l.cliente_id, l.total, l.estado, c.chapa, c.marca_modelo,
+            c.nombre as cliente_nombre, c.ruc as cliente_ruc, c.direccion as cliente_direccion
+     from lavados l
+     join clientes c on c.id = l.cliente_id
+     where l.id = $1`,
+    [lavadoId]
+  );
+  if (!result.rows[0]) throw new Error("No se encontro el ultimo lavado.");
+  if (result.rows[0].estado === "ANULADO") throw new Error("No se puede facturar un lavado anulado.");
+  const factura = await query(`select id from facturas where lavado_id = $1 limit 1`, [lavadoId]);
+  if (factura.rows[0]) throw new Error(`Este lavado ya tiene registrada la factura #${factura.rows[0].id}.`);
+  const services = await query(
+    `select s.nombre, ls.precio from lavado_servicios ls join servicios s on s.id = ls.servicio_id where ls.lavado_id = $1 order by ls.id`,
+    [lavadoId]
+  );
+  result.rows[0].servicios = services.rows;
+  return result.rows[0];
+}
+
+async function consultarRuc(ruc) {
+  const normalized = normalizeRuc(ruc);
+  if (!normalized || !isBasicRuc(normalized)) throw new Error("Ingrese un RUC valido, por ejemplo 80012345-6.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await fetch(`https://turuc.com.py/api/contribuyente?ruc=${encodeURIComponent(normalized)}`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.data?.razonSocial) throw new Error("El RUC no existe o no pudo ser verificado.");
+    return {
+      ruc: normalizeRuc(payload.data.ruc || normalized),
+      nombre: String(payload.data.razonSocial || "").trim().toUpperCase(),
+      estado: String(payload.data.estado || "").trim()
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function mostrarDatosFactura(bot, chatId, session, lavado) {
+  session.invoiceLavado = lavado;
+  session.step = "WAITING_INVOICE_CONFIRMATION";
+  const services = (lavado.servicios || []).map((item) => `- ${item.nombre}: ${formatMoney(item.precio)}`).join("\n");
+  return send(
+    bot,
+    chatId,
+    `Datos de la factura del lavado #${lavado.id}:\n\nCliente: ${lavado.cliente_nombre}\nRUC: ${lavado.cliente_ruc}\nChapa: ${lavado.chapa}\nServicios:\n${services || "- Sin servicios"}\nTotal: ${formatMoney(lavado.total)}\n\n¿Los datos son correctos?`,
+    { reply_markup: keyboard([[button("CONFIRMAR FACTURA", "invoice:confirm")], [button("CANCELAR", "invoice:cancel")]]) }
+  );
+}
+
+async function iniciarFactura(bot, chatId, session) {
+  const lavado = await getLavadoParaFactura(session.lavadoId);
+  if (lavado.cliente_ruc && lavado.cliente_nombre) return mostrarDatosFactura(bot, chatId, session, lavado);
+  session.step = "WAITING_INVOICE_RUC";
+  session.invoiceLavado = lavado;
+  return send(bot, chatId, "El ultimo lavado no tiene RUC y nombre completos. Escribi el RUC del cliente para verificarlo:", { reply_markup: removeKeyboard() });
+}
+
+async function createFacturaTelegram(session, chatId, from) {
+  const lavado = await getLavadoParaFactura(session.lavadoId);
+  if (!lavado.cliente_ruc || !lavado.cliente_nombre) throw new Error("Faltan RUC y nombre del cliente.");
+  const services = await query(
+    `select ls.servicio_id, s.nombre as descripcion, ls.precio as precio_unitario
+     from lavado_servicios ls join servicios s on s.id = ls.servicio_id
+     where ls.lavado_id = $1 order by ls.id`,
+    [lavado.id]
+  );
+  if (!services.rows.length) throw new Error("El lavado no tiene servicios para facturar.");
+  const total = services.rows.reduce((sum, item) => sum + Number(item.precio_unitario || 0), 0);
+  const creadoPor = `Telegram ${from.username ? `@${from.username}` : chatId}`;
+  return withTransaction(async (client) => {
+    const duplicate = await client.query(`select id from facturas where lavado_id = $1 limit 1`, [lavado.id]);
+    if (duplicate.rows[0]) throw new Error(`Este lavado ya tiene registrada la factura #${duplicate.rows[0].id}.`);
+    const created = await client.query(
+      `insert into facturas
+       (fecha_emision, cliente_id, lavado_id, cliente_nombre, cliente_ruc, cliente_direccion,
+        condicion, subtotal, iva_10, total, origen, creado_por)
+       values (current_date, $1, $2, $3, $4, $5, 'CONTADO', $6, $7, $6, 'LAVADO', $8)
+       returning id`,
+      [lavado.cliente_id, lavado.id, lavado.cliente_nombre, lavado.cliente_ruc, lavado.cliente_direccion || null, total, Math.round(total / 11), creadoPor]
+    );
+    for (const item of services.rows) {
+      const price = Number(item.precio_unitario || 0);
+      await client.query(
+        `insert into factura_items
+         (factura_id, servicio_id, descripcion, cantidad, precio_unitario, iva_10, total, creado_por)
+         values ($1, $2, $3, 1, $4, $5, $4, $6)`,
+        [created.rows[0].id, item.servicio_id, item.descripcion, price, Math.round(price / 11), creadoPor]
+      );
+    }
+    return created.rows[0].id;
+  });
+}
+
 async function handleText(bot, msg) {
   const chatId = chatIdOf(msg);
   const text = String(msg.text || "").trim();
@@ -361,7 +504,13 @@ async function handleText(bot, msg) {
     clearSession(chatId);
     return send(bot, chatId, "Operacion cancelada.", { reply_markup: removeKeyboard() });
   }
-  if (!isAllowed(chatId)) return send(bot, chatId, `Chat no autorizado. Tu ID es ${chatId}.`);
+  if (!(await isAllowed(chatId))) {
+    if (isUniversalPin(text)) {
+      await authorizeChat(msg);
+      return send(bot, chatId, "Chat autorizado correctamente. Ya podes usar /nuevo para comenzar.");
+    }
+    return send(bot, chatId, authorizationMessage());
+  }
   if (text === "/start" || text === "/nuevo") {
     newSession(chatId);
     return send(bot, chatId, "Envia una foto del auto para comenzar un nuevo lavado.", { reply_markup: removeKeyboard() });
@@ -373,6 +522,19 @@ async function handleText(bot, msg) {
     session.plate = normalizePlate(text);
     if (session.plate.length < 4) return send(bot, chatId, "La chapa parece demasiado corta. Escribila nuevamente.");
     return continueWithPlate(bot, chatId, session);
+  }
+  if (session.step === "WAITING_INVOICE_RUC") {
+    try {
+      const contributor = await consultarRuc(text);
+      await query(`update clientes set ruc = $1, nombre = $2 where id = $3`, [contributor.ruc, contributor.nombre, session.invoiceLavado.cliente_id]);
+      const lavado = await getLavadoParaFactura(session.lavadoId);
+      return mostrarDatosFactura(bot, chatId, session, lavado);
+    } catch (error) {
+      return send(bot, chatId, `No se pudo verificar el RUC: ${error.message}\nEscribilo nuevamente o usa /cancelar.`);
+    }
+  }
+  if (session.step === "WAITING_INVOICE_CONFIRMATION") {
+    return send(bot, chatId, "Confirma la factura usando el boton o escribe /cancelar.");
   }
   if (session.step === "WAITING_NEW_MAKE" && text.startsWith("Usar ") && session.vehicleSuggestion) {
     const suggestion = [session.vehicleSuggestion.make, session.vehicleSuggestion.model].filter(Boolean).join(" ");
@@ -436,8 +598,10 @@ async function handleText(bot, msg) {
     }
     if (text !== "CONFIRMAR Y GUARDAR") return send(bot, chatId, "Usa CONFIRMAR Y GUARDAR o CANCELAR.");
     const lavadoId = await createLavado(session, chatId, msg.from);
-    clearSession(chatId);
-    return send(bot, chatId, `Lavado #${lavadoId} registrado correctamente.`, { reply_markup: removeKeyboard() });
+    sessions.set(chatId, { step: "AFTER_WASH", lavadoId, updatedAt: Date.now() });
+    return send(bot, chatId, `Lavado #${lavadoId} registrado correctamente. ¿Deseas emitir la factura?`, {
+      reply_markup: keyboard([[button("FACTURA", "invoice:start")], [button("FINALIZAR", "invoice:cancel")]])
+    });
   }
   if (session.step === "WAITING_CUSTOM_SERVICE_DESCRIPTION") {
     if (!text) return send(bot, chatId, "Escribi una descripcion para el servicio:");
@@ -459,7 +623,7 @@ async function handleText(bot, msg) {
 async function handleCallback(bot, callbackQuery) {
   const chatId = String(callbackQuery.message?.chat?.id || "");
   await answer(bot, callbackQuery);
-  if (!isAllowed(chatId)) return send(bot, chatId, `Chat no autorizado. Tu ID es ${chatId}.`);
+  if (!(await isAllowed(chatId))) return send(bot, chatId, authorizationMessage());
   const session = getSession(chatId);
   if (!session) return send(bot, chatId, "La operacion vencio. Envia una nueva foto para comenzar.");
   const [action, rawValue] = String(callbackQuery.data || "").split(":");
@@ -521,8 +685,24 @@ async function handleCallback(bot, callbackQuery) {
     }
     if (action === "wash" && rawValue === "confirm") {
       const lavadoId = await createLavado(session, chatId, callbackQuery.from);
+      sessions.set(chatId, { step: "AFTER_WASH", lavadoId, updatedAt: Date.now() });
+      return send(bot, chatId, `Lavado #${lavadoId} registrado correctamente. ¿Deseas emitir la factura?`, {
+        reply_markup: keyboard([[button("FACTURA", "invoice:start")], [button("FINALIZAR", "invoice:cancel")]])
+      });
+    }
+    if (action === "invoice" && rawValue === "start") {
+      if (session.step !== "AFTER_WASH") return send(bot, chatId, "No hay un lavado pendiente de facturar.");
+      return iniciarFactura(bot, chatId, session);
+    }
+    if (action === "invoice" && rawValue === "cancel") {
       clearSession(chatId);
-      return send(bot, chatId, `Lavado #${lavadoId} registrado correctamente.`);
+      return send(bot, chatId, "Operacion finalizada.", { reply_markup: removeKeyboard() });
+    }
+    if (action === "invoice" && rawValue === "confirm") {
+      if (session.step !== "WAITING_INVOICE_CONFIRMATION") return send(bot, chatId, "La confirmacion de factura vencio.");
+      const facturaId = await createFacturaTelegram(session, chatId, callbackQuery.from);
+      clearSession(chatId);
+      return send(bot, chatId, `Factura #${facturaId} registrada correctamente.`, { reply_markup: removeKeyboard() });
     }
   } catch (error) {
     console.error("Telegram flow error:", error);

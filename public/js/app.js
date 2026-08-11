@@ -37,6 +37,51 @@
       email: quickClient.querySelector("input[name='nuevo_email']"),
       grupo: quickClient.querySelector("select[name='nuevo_grupo_cliente_id']")
     };
+    const quickRucStatus = quickClient.querySelector("[data-quick-ruc-status]");
+
+    function setQuickRucStatus(message, state) {
+      if (!quickRucStatus) return;
+      quickRucStatus.textContent = message || "";
+      quickRucStatus.dataset.state = state || "";
+    }
+
+    async function lookupQuickRuc() {
+      if (!quickFields.ruc) return;
+      const ruc = quickFields.ruc.value.trim();
+      if (!ruc) {
+        setQuickRucStatus("");
+        return;
+      }
+
+      setQuickRucStatus("Consultando RUC...", "pending");
+      try {
+        const response = await fetch(`/facturas/ruc?ruc=${encodeURIComponent(ruc)}`, {
+          headers: { Accept: "application/json" }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setQuickRucStatus(data.message || "No se pudo consultar el RUC.", "error");
+          return;
+        }
+        if (!data.found) {
+          setQuickRucStatus(data.message || "RUC no existe.", "error");
+          return;
+        }
+        if (quickFields.nombre) {
+          quickFields.nombre.value = data.nombre || "";
+          quickFields.nombre.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (data.ruc) {
+          quickFields.ruc.value = data.ruc;
+          quickFields.ruc.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        setQuickRucStatus(`Encontrado${data.estado ? `: ${data.estado}` : ""}`, "success");
+      } catch (error) {
+        setQuickRucStatus("No se pudo consultar el RUC.", "error");
+      }
+    }
+
+    quickFields.ruc?.addEventListener("blur", lookupQuickRuc);
 
     function optionText(cliente) {
       return `${cliente.chapa} - ${cliente.marca_modelo}${cliente.nombre ? ` - ${cliente.nombre}` : ""}${cliente.grupo_nombre ? ` (${cliente.grupo_nombre})` : ""}`;
@@ -667,10 +712,11 @@
     const input = line.querySelector("[data-price-input]");
     const remove = line.querySelector("[data-remove-service]");
     if (select && input) {
+      if (input.value) input.value = String(parseIntegerMoney(input.value));
       applyServiceGroupFilter(select);
       select.addEventListener("change", () => {
         const option = select.options[select.selectedIndex];
-        input.value = option && option.dataset.price ? option.dataset.price : "";
+        input.value = option && option.dataset.price ? String(parseIntegerMoney(option.dataset.price)) : "";
         recalc();
       });
       input.addEventListener("input", recalc);
