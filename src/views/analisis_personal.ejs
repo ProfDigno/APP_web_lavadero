@@ -184,7 +184,7 @@
                 <td><%= lavado.grupo_cliente_nombre || '' %></td>
                 <td><%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %></td>
                 <td><span class="badge <%= lavado.estado.toLowerCase() %>"><%= lavado.estado %></span></td>
-                <td class="money-cell"><%= formatMoney(lavado.total) %></td>
+                <td class="money-cell"><%= formatMoney(lavado.total_servicios_personal) %></td>
                 <td class="money-cell"><%= formatMoney(lavado.comision_personal) %></td>
               </tr>
             <% }) %>

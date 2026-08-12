@@ -33,13 +33,15 @@
           <a href="/grupo-creditos">Credito por grupo</a>
         </div>
       </details>
-      <details class="nav-menu">
-        <summary>Servicio</summary>
-        <div class="nav-submenu">
-          <a href="/servicios">Servicios</a>
-          <a href="/servicio-grupos">Grupos de servicios</a>
-        </div>
-      </details>
+      <% if (canItem('servicio')) { %>
+        <details class="nav-menu">
+          <summary>Servicio</summary>
+          <div class="nav-submenu">
+            <a href="/servicios">Servicios</a>
+            <a href="/servicio-grupos">Grupos de servicios</a>
+          </div>
+        </details>
+      <% } %>
       <details class="nav-menu">
         <summary>Personal</summary>
         <div class="nav-submenu">
@@ -65,7 +67,14 @@
         </div>
       </details>
       <a href="/formas-pago">Pagos</a>
-      <a href="/usuarios">Usuarios</a>
+      <details class="nav-menu">
+        <summary>Usuarios</summary>
+        <div class="nav-submenu">
+          <a href="/usuarios">Usuario</a>
+          <a href="/usuario-roll">Roll</a>
+          <a href="/usuario-roll-eventos">Evento</a>
+        </div>
+      </details>
     </nav>
   <% } %>
   <main class="container <%= user ? '' : 'auth-container' %>">

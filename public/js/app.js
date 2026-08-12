@@ -660,16 +660,27 @@
     });
   });
 
-  const personalInput = document.querySelector("[data-personal-input]");
+  const personalInputs = document.querySelector("[data-personal-inputs]");
   const personalButtons = document.querySelector("[data-personal-buttons]");
-  if (personalInput && personalButtons) {
+  if (personalInputs && personalButtons) {
+    function syncPersonalInputs() {
+      personalInputs.innerHTML = "";
+      personalButtons.querySelectorAll("[data-personal-id].is-selected").forEach((button) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "personal_id";
+        input.value = button.dataset.personalId;
+        personalInputs.appendChild(input);
+      });
+    }
+
     personalButtons.querySelectorAll("[data-personal-id]").forEach((button) => {
       button.addEventListener("click", () => {
-        personalInput.value = button.dataset.personalId;
-        personalButtons.querySelectorAll("[data-personal-id]").forEach((item) => item.classList.remove("is-selected"));
-        button.classList.add("is-selected");
+        button.classList.toggle("is-selected");
+        syncPersonalInputs();
       });
     });
+    syncPersonalInputs();
   }
 
   const list = document.querySelector("[data-services-list]");
@@ -805,7 +816,7 @@
 
     function populateNewWashModal() {
       const client = selectedClient();
-      const personalButton = newWashForm.querySelector("[data-personal-buttons] .is-selected");
+      const personalButtons = Array.from(newWashForm.querySelectorAll("[data-personal-buttons] .is-selected"));
       const services = Array.from(newWashForm.querySelectorAll("[data-services-list] .service-line")).map((line) => {
         const select = line.querySelector("[data-service-price]");
         const option = select?.options[select.selectedIndex];
@@ -815,7 +826,7 @@
 
       fields.auto.textContent = client.auto || "Sin datos";
       fields.client.textContent = client.client || "Sin nombre";
-      fields.personal.textContent = personalButton?.textContent.trim() || "Sin seleccionar";
+      fields.personal.textContent = personalButtons.map((button) => button.textContent.trim()).join(", ") || "Sin seleccionar";
       fields.services.textContent = services.join("; ") || "Sin servicios";
       fields.total.textContent = newWashForm.querySelector("[data-total]")?.textContent.trim() || "Gs. 0";
     }

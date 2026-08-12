@@ -20,4 +20,4 @@ La versión debe mantenerse igual en `package.json` y `package-lock.json`.
 4. Incluir el cambio de versión en el mismo commit que la modificación.
 5. Publicar y verificar la versión en el servidor.
 
-Versión actual: **1.0.2**.
+Versión actual: **1.0.4**.

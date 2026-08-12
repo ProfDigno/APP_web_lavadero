@@ -20,14 +20,15 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>ID</th><th>Usuario</th><th>Nombre</th><th></th></tr>
+        <tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Rol</th><th></th></tr>
       </thead>
       <tbody>
         <% usuarios.forEach((item) => { %>
-          <tr class="<%= !item.activo ? 'row-inactive' : '' %>" data-crud-row data-search="<%= [item.id, item.login, item.nombre, item.activo ? 'Activo' : 'Inactivo'].join(' ') %>">
+          <tr class="<%= !item.activo ? 'row-inactive' : '' %>" data-crud-row data-search="<%= [item.id, item.login, item.nombre, item.roll || '', item.activo ? 'Activo' : 'Inactivo'].join(' ') %>">
             <td><%= item.id %></td>
             <td><%= item.login %></td>
             <td><%= item.nombre %></td>
+            <td><%= item.roll || 'Sin rol' %></td>
             <td class="cell-actions">
               <a class="icon-button" href="/usuarios?edit=<%= item.id %>" aria-label="Editar" title="Editar">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -46,8 +47,8 @@
             </td>
           </tr>
         <% }) %>
-        <% if (!usuarios.length) { %><tr data-crud-empty><td colspan="4">Sin usuarios.</td></tr><% } %>
-        <tr class="is-hidden" data-crud-no-results><td colspan="4">Sin resultados para la busqueda.</td></tr>
+        <% if (!usuarios.length) { %><tr data-crud-empty><td colspan="5">Sin usuarios.</td></tr><% } %>
+        <tr class="is-hidden" data-crud-no-results><td colspan="5">Sin resultados para la busqueda.</td></tr>
       </tbody>
     </table>
   </div>
@@ -70,6 +71,15 @@
     <label>
       Nombre
       <input name="nombre" value="<%= editItem ? editItem.nombre : '' %>" required>
+    </label>
+    <label>
+      Rol
+      <select name="usuario_roll_id">
+        <option value="">Sin rol</option>
+        <% (rolls || []).forEach((roll) => { %>
+          <option value="<%= roll.id %>" <%= editItem && Number(editItem.usuario_roll_id) === Number(roll.id) ? 'selected' : '' %>><%= roll.roll %></option>
+        <% }) %>
+      </select>
     </label>
     <label>
       Clave <%= editItem ? '(dejar vacia para mantener)' : '' %>

@@ -18,8 +18,16 @@ async function seed() {
     await client.query(
       `insert into usuarios (login, password_hash, nombre, activo, creado_por)
        values ($1, $2, $3, true, $3)
-       on conflict (login) do nothing`,
+       on conflict (login) do update set
+         usuario_roll_id = coalesce(usuarios.usuario_roll_id, (select id from usuario_roll where roll = 'ADMINISTRADOR'))`,
       [config.admin.login, passwordHash, config.admin.name]
+    );
+
+    await client.query(
+      `update usuarios
+       set usuario_roll_id = (select id from usuario_roll where roll = 'ADMINISTRADOR')
+       where login = $1 and usuario_roll_id is null`,
+      [config.admin.login]
     );
 
     for (const forma of formasPago) {

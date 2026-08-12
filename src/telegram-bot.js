@@ -126,6 +126,13 @@ function normalizeRuc(value) {
   return text;
 }
 
+function splitCommission(total, count) {
+  const amount = Math.round(Number(total || 0) * 100);
+  const base = Math.floor(amount / count);
+  const remainder = amount - base * count;
+  return Array.from({ length: count }, (_, index) => (base + (index === 0 ? remainder : 0)) / 100);
+}
+
 function isBasicRuc(value) {
   return /^\d{1,8}(?:-\d)?$/.test(value);
 }
@@ -233,8 +240,12 @@ async function askPersonal(bot, chatId, session) {
   const result = await query(`select id, nombre from personal where activo = true order by nombre`);
   if (!result.rows.length) return send(bot, chatId, "No hay personal activo cargado en el sistema.");
   session.step = "WAITING_PERSONAL";
-  const rows = twoColumns(result.rows.map((item) => button(item.nombre, `personal:${item.id}`)));
-  return send(bot, chatId, "¿Quien va a lavar el auto?", { reply_markup: keyboard(rows) });
+  if (!Array.isArray(session.personalIds)) session.personalIds = [];
+  const selected = new Set(session.personalIds.map(Number));
+  const rows = twoColumns(result.rows.map((item) => button(`${selected.has(item.id) ? "✓ " : ""}${item.nombre}`, `personal:${item.id}`)));
+  rows.push([button("CONFIRMAR LAVADORES", "personal:done")]);
+  const selectedNames = result.rows.filter((item) => selected.has(item.id)).map((item) => item.nombre);
+  return send(bot, chatId, `Selecciona uno o varios lavadores.${selectedNames.length ? `\nSeleccionados: ${selectedNames.join(", ")}` : ""}`, { reply_markup: keyboard(rows) });
 }
 
 async function askClientGroup(bot, chatId, session) {
@@ -374,25 +385,36 @@ async function createLavado(session, chatId, from) {
 
     const lavado = await client.query(
       `insert into lavados
-       (cliente_id, personal_id, condicion, forma_pago_id, estado, total, comision_personal, saldo_lavadero, grupo_cliente_credito_id, creado_por)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
-      [clienteId, session.personalId, cliente.es_credito ? "CREDITO" : "CONTADO", forma.rows[0].id, cliente.es_credito ? "CREDITO" : (forma.rows[0].nombre === "LAVADO" ? "EMITIDO" : "PAGADO"), total, comision, saldo, creditoId, creadoPor]
+       (cliente_id, condicion, forma_pago_id, estado, total, comision_personal, saldo_lavadero, grupo_cliente_credito_id, creado_por)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
+      [clienteId, cliente.es_credito ? "CREDITO" : "CONTADO", forma.rows[0].id, cliente.es_credito ? "CREDITO" : (forma.rows[0].nombre === "LAVADO" ? "EMITIDO" : "PAGADO"), total, comision, saldo, creditoId, creadoPor]
     );
+    if (!session.personalIds?.length) throw new Error("Seleccione al menos un personal.");
+    const commissions = splitCommission(comision, session.personalIds.length);
+    for (const [index, personalId] of session.personalIds.entries()) {
+      await client.query(
+        `insert into lavado_personal (lavado_id, personal_id, comision, creado_por) values ($1, $2, $3, $4)`,
+        [lavado.rows[0].id, personalId, commissions[index], creadoPor]
+      );
+    }
     for (const item of services.rows) {
       await client.query(
         `insert into lavado_servicios (lavado_id, servicio_id, precio, creado_por) values ($1, $2, $3, $4)`,
         [lavado.rows[0].id, item.id, item.precio_base, creadoPor]
       );
     }
-    await client.query(
-      `insert into comisiones_diarias (fecha, personal_id, total_lavados_emitidos, total_servicios, total_comision_40, creado_por)
-       values (current_date, $1, 1, $2, $3, $4)
-       on conflict (fecha, personal_id) do update set
-         total_lavados_emitidos = greatest(0, comisiones_diarias.total_lavados_emitidos + 1),
-         total_servicios = greatest(0, comisiones_diarias.total_servicios + excluded.total_servicios),
-         total_comision_40 = greatest(0, comisiones_diarias.total_comision_40 + excluded.total_comision_40)`,
-      [session.personalId, total, comision, creadoPor]
-    );
+    const serviceShares = splitCommission(total, session.personalIds.length);
+    for (const [index, personalId] of session.personalIds.entries()) {
+      await client.query(
+        `insert into comisiones_diarias (fecha, personal_id, total_lavados_emitidos, total_servicios, total_comision_40, creado_por)
+         values (current_date, $1, 1, $2, $3, $4)
+         on conflict (fecha, personal_id) do update set
+           total_lavados_emitidos = greatest(0, comisiones_diarias.total_lavados_emitidos + 1),
+           total_servicios = greatest(0, comisiones_diarias.total_servicios + excluded.total_servicios),
+           total_comision_40 = greatest(0, comisiones_diarias.total_comision_40 + excluded.total_comision_40)`,
+        [personalId, serviceShares[index], commissions[index], creadoPor]
+      );
+    }
     return lavado.rows[0].id;
   });
 }
@@ -548,9 +570,12 @@ async function handleText(bot, msg) {
   if (session.step === "WAITING_PERSONAL") {
     const result = await query(`select id, nombre from personal where activo = true and nombre = $1`, [text]);
     if (!result.rows[0]) return send(bot, chatId, "Selecciona un personal usando los botones del teclado.");
-    session.personalId = result.rows[0].id;
-    session.personalNombre = result.rows[0].nombre;
-    return askServiceGroup(bot, chatId, session);
+    if (!Array.isArray(session.personalIds)) session.personalIds = [];
+    const personalId = result.rows[0].id;
+    session.personalIds = session.personalIds.includes(personalId)
+      ? session.personalIds.filter((id) => id !== personalId)
+      : [...session.personalIds, personalId];
+    return askPersonal(bot, chatId, session);
   }
   if (session.step === "WAITING_CLIENT_GROUP") {
     if (text === "Sin grupo") {
@@ -650,11 +675,21 @@ async function handleCallback(bot, callbackQuery) {
       return askPersonal(bot, chatId, session);
     }
     if (action === "personal") {
-      const result = await query(`select id, nombre from personal where id = $1 and activo = true`, [Number(rawValue)]);
+      if (!Array.isArray(session.personalIds)) session.personalIds = [];
+      if (rawValue === "done") {
+        if (!session.personalIds.length) return askPersonal(bot, chatId, session);
+        const selected = await query(`select id, nombre from personal where id = any($1::int[]) and activo = true order by array_position($1::int[], id)`, [session.personalIds]);
+        if (selected.rows.length !== session.personalIds.length) throw new Error("Uno de los personales seleccionados no esta disponible.");
+        session.personalNombre = selected.rows.map((item) => item.nombre).join(", ");
+        return askServiceGroup(bot, chatId, session);
+      }
+      const personalId = Number(rawValue);
+      const result = await query(`select id from personal where id = $1 and activo = true`, [personalId]);
       if (!result.rows[0]) throw new Error("Personal no encontrado.");
-      session.personalId = result.rows[0].id;
-      session.personalNombre = result.rows[0].nombre;
-      return askServiceGroup(bot, chatId, session);
+      session.personalIds = session.personalIds.includes(personalId)
+        ? session.personalIds.filter((id) => id !== personalId)
+        : [...session.personalIds, personalId];
+      return askPersonal(bot, chatId, session);
     }
     if (action === "servicegroup") {
       session.serviceGroupId = Number(rawValue);

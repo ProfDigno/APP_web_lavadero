@@ -1,0 +1,84 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Eventos</h1>
+    <p>Acciones disponibles para cada roll</p>
+  </div>
+  <a class="button secondary" href="/usuario-roll">Administrar roll</a>
+</div>
+
+<section class="grid two">
+  <form class="panel stack" method="post" action="/usuario-roll-eventos<%= editEvento ? '/' + editEvento.id : '' %>">
+    <h2><%= editEvento ? 'Editar evento' : 'Nuevo evento' %></h2>
+    <label>
+      Nombre
+      <% if (editEvento) { %>
+        <input value="<%= editEvento.nombre %>" readonly>
+      <% } else { %>
+        <input name="nombre" required value="" placeholder="Ejemplo: Bloquear servicio">
+      <% } %>
+    </label>
+    <label>
+      Código del evento
+      <% if (editEvento) { %>
+        <input value="<%= editEvento.codigo_evento %>" readonly>
+      <% } else { %>
+        <input name="codigo_evento" required value="" placeholder="Ejemplo: servicio-bloqueo">
+      <% } %>
+    </label>
+    <label>
+      Descripción
+      <textarea name="descripcion" rows="3"><%= editEvento ? (editEvento.descripcion || '') : '' %></textarea>
+    </label>
+    <label class="check">
+      <input type="checkbox" name="activo" <%= editEvento ? (editEvento.activo ? 'checked' : '') : 'checked' %>>
+      <span>Activo</span>
+    </label>
+    <div class="actions">
+      <button type="submit"><%= editEvento ? 'Guardar cambios' : 'Crear evento' %></button>
+      <% if (editEvento) { %><a class="button secondary" href="/usuario-roll-eventos">Cancelar</a><% } %>
+    </div>
+  </form>
+
+  <div class="crud-list-panel" data-crud-search-scope>
+    <div class="crud-searchbar">
+      <label>
+        Buscar evento
+        <input type="search" placeholder="Buscar en eventos" autocomplete="off" data-crud-search>
+      </label>
+      <span class="crud-search-count" data-crud-search-count><%= eventos.length %> eventos</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nombre</th><th>Código</th><th>Ítems</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          <% eventos.forEach((evento) => { %>
+            <tr class="<%= !evento.activo ? 'row-inactive' : '' %>" data-crud-row data-search="<%= [evento.nombre, evento.codigo_evento, evento.descripcion || '', evento.items_count, evento.activo ? 'Activo' : 'Inactivo'].join(' ') %>">
+              <td><%= evento.nombre %></td>
+              <td><%= evento.codigo_evento %></td>
+              <td><%= evento.items_count %></td>
+              <td><%= evento.activo ? 'Activo' : 'Inactivo' %></td>
+              <td class="cell-actions">
+                <a class="icon-button" href="/usuario-roll-eventos?edit=<%= evento.id %>" aria-label="Editar" title="Editar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
+                    <path d="M13.5 6.5l4 4"></path>
+                  </svg>
+                </a>
+                <form action="/usuario-roll-eventos/<%= evento.id %>/toggle" method="post" title="<%= evento.activo ? 'Desactivar' : 'Activar' %>">
+                  <label class="toggle-check">
+                    <input type="checkbox" <%= evento.activo ? 'checked' : '' %> onchange="this.form.submit()">
+                    <span></span>
+                  </label>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+          <% if (!eventos.length) { %><tr data-crud-empty><td colspan="5">Sin eventos.</td></tr><% } %>
+          <tr class="is-hidden" data-crud-no-results><td colspan="5">Sin resultados para la búsqueda.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<%- include('partials/footer') %>

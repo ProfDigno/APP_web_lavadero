@@ -44,10 +44,13 @@
       </label>
       <div class="choice-group">
         <span class="choice-label">Personal</span>
-        <input type="hidden" name="personal_id" value="<%= formData.personal_id || '' %>" required data-personal-input>
+        <% const selectedPersonalIds = Array.isArray(formData.personal_id) ? formData.personal_id.map(String) : (formData.personal_id ? [String(formData.personal_id)] : []); %>
+        <div data-personal-inputs>
+          <% selectedPersonalIds.forEach((personalId) => { %><input type="hidden" name="personal_id" value="<%= personalId %>"><% }) %>
+        </div>
         <div class="choice-buttons" data-personal-buttons>
           <% personal.forEach((persona) => { %>
-            <button type="button" class="choice-button <%= String(formData.personal_id || '') === String(persona.id) ? 'is-selected' : '' %>" data-personal-id="<%= persona.id %>"><%= persona.nombre %></button>
+            <button type="button" class="choice-button <%= selectedPersonalIds.includes(String(persona.id)) ? 'is-selected' : '' %>" data-personal-id="<%= persona.id %>"><%= persona.nombre %></button>
           <% }) %>
         </div>
       </div>

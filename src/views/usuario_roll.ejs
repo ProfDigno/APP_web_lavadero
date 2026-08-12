@@ -1,0 +1,120 @@
+<%- include('partials/header') %>
+<div class="page-head">
+  <div>
+    <h1>Roll</h1>
+    <p><%= editRole ? 'Editando roll' : 'Alta y mantenimiento' %></p>
+  </div>
+  <button type="button" data-open-crud-modal>Nuevo roll</button>
+</div>
+
+<section class="grid one">
+  <div class="crud-list-panel" data-crud-search-scope>
+    <div class="crud-searchbar">
+      <label>
+        Buscar
+        <input type="search" placeholder="Buscar en rolls" autocomplete="off" data-crud-search>
+      </label>
+      <span class="crud-search-count" data-crud-search-count><%= roles.length %> rolls</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Roll</th><th>Usuarios</th><th>Ítems</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          <% roles.forEach((role) => { %>
+            <tr class="<%= !role.activo ? 'row-inactive' : '' %>" data-crud-row data-search="<%= [role.id, role.roll, role.usuarios_count, role.items_count, role.activo ? 'Activo' : 'Inactivo'].join(' ') %>">
+              <td><%= role.id %></td>
+              <td><%= role.roll %></td>
+              <td><%= role.usuarios_count %></td>
+              <td><%= role.items_count %></td>
+              <td><%= role.activo ? 'Activo' : 'Inactivo' %></td>
+              <td class="cell-actions">
+                <a class="icon-button" href="/usuario-roll?edit=<%= role.id %>" aria-label="Editar" title="Editar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
+                    <path d="M13.5 6.5l4 4"></path>
+                  </svg>
+                </a>
+                <form action="/usuario-roll/<%= role.id %>/toggle" method="post" title="<%= role.activo ? 'Desactivar' : 'Activar' %>">
+                  <label class="toggle-check">
+                    <input type="checkbox" <%= role.activo ? 'checked' : '' %> onchange="this.form.submit()">
+                    <span></span>
+                  </label>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+          <% if (!roles.length) { %><tr data-crud-empty><td colspan="6">Sin rolls.</td></tr><% } %>
+          <tr class="is-hidden" data-crud-no-results><td colspan="6">Sin resultados para la búsqueda.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="modal-backdrop <%= editRole ? '' : 'is-hidden' %>" data-crud-modal>
+  <form
+    class="modal-panel crud-modal-panel stack"
+    method="post"
+    action="/usuario-roll<%= editRole ? '/' + editRole.id : '' %>"
+    data-crud-modal-form
+    data-create-action="/usuario-roll"
+    data-new-title="Nuevo roll">
+    <h2 data-crud-modal-title><%= editRole ? 'Editar roll' : 'Nuevo roll' %></h2>
+    <label>
+      Roll
+      <input name="roll" value="<%= editRole ? editRole.roll : '' %>" required autocomplete="off" placeholder="Ejemplo: cajero">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="activo" <%= editRole ? (editRole.activo ? 'checked' : '') : 'checked' %>>
+      <span>Activo</span>
+    </label>
+    <div class="modal-actions">
+      <button type="submit"><%= editRole ? 'Guardar cambios' : 'Crear roll' %></button>
+      <button type="button" class="secondary" data-close-crud-modal>Cancelar</button>
+    </div>
+  </form>
+</div>
+
+<div class="page-head section-title">
+  <div>
+    <h2>Ítems de formularios</h2>
+    <p>Definen qué módulos puede ver cada roll.</p>
+  </div>
+</div>
+
+<section class="grid one">
+  <div class="crud-list-panel" data-crud-search-scope>
+    <div class="crud-searchbar">
+      <label>
+        Buscar ítem
+        <input type="search" placeholder="Buscar en ítems" autocomplete="off" data-crud-search>
+      </label>
+      <span class="crud-search-count" data-crud-search-count><%= items.length %> ítems</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Roll</th><th>Evento heredado</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          <% items.forEach((item) => { %>
+            <tr class="<%= !item.activo ? 'row-inactive' : '' %>" data-crud-row data-search="<%= [item.roll, item.codigo_evento || '', item.evento_nombre || '', item.activo ? 'Activo' : 'Inactivo'].join(' ') %>">
+              <td><%= item.roll %></td>
+              <td><%= item.codigo_evento + ' - ' + item.evento_nombre %></td>
+              <td><%= item.activo ? 'Activo' : 'Inactivo' %></td>
+              <td class="cell-actions">
+                <form action="/usuario-roll-item/<%= item.id %>/toggle" method="post" title="<%= item.activo ? 'Desactivar' : 'Activar' %>">
+                  <label class="toggle-check">
+                    <input type="checkbox" <%= item.activo ? 'checked' : '' %> onchange="this.form.submit()">
+                    <span></span>
+                  </label>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+          <% if (!items.length) { %><tr data-crud-empty><td colspan="4">Sin ítems.</td></tr><% } %>
+          <tr class="is-hidden" data-crud-no-results><td colspan="4">Sin resultados para la búsqueda.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<%- include('partials/footer') %>

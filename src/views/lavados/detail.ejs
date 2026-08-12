@@ -2,7 +2,7 @@
 <div class="page-head">
   <div>
     <h1>Lavado #<%= lavado.id %></h1>
-    <p><%= lavado.chapa %> - <%= lavado.marca_modelo %></p>
+    <p class="wash-vehicle" style="--vehicle-color: <%= lavado.forma_pago_color || '#115e59' %>"><%= lavado.chapa %> - <%= lavado.marca_modelo %></p>
   </div>
   <div class="actions">
     <a class="button secondary" href="/lavados">Volver</a>
@@ -53,6 +53,65 @@
 </section>
 
 <% if (lavado.estado !== 'ANULADO') { %>
+  <section class="panel stack wash-edit-panel">
+    <div class="section-title">
+      <h2>Editar lavado</h2>
+      <span class="hint">Cambie lavadores, servicios o precios</span>
+    </div>
+    <form method="post" action="/lavados/<%= lavado.id %>/editar" class="stack wash-form" data-edit-wash-form>
+      <div class="choice-group">
+        <span class="choice-label">Lavador/es</span>
+        <div data-personal-inputs>
+          <% personalIds.forEach((personalId) => { %><input type="hidden" name="personal_id" value="<%= personalId %>"><% }) %>
+        </div>
+        <div class="choice-buttons" data-personal-buttons>
+          <% personal.forEach((persona) => { %>
+            <button type="button" class="choice-button <%= personalIds.includes(String(persona.id)) ? 'is-selected' : '' %>" data-personal-id="<%= persona.id %>"><%= persona.nombre %></button>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="services-box">
+        <div class="section-title">
+          <h3>Servicios</h3>
+          <button class="secondary" type="button" data-add-service>Agregar servicio</button>
+        </div>
+        <div data-services-list>
+          <% servicios.forEach((servicio) => { %>
+            <div class="service-line">
+              <select name="servicio_id" required data-service-price>
+                <option value="">Servicio</option>
+                <% serviciosDisponibles.forEach((disponible) => { %>
+                  <option value="<%= disponible.id %>" data-price="<%= disponible.precio_base %>" <%= Number(disponible.id) === Number(servicio.servicio_id) ? 'selected' : '' %>><%= disponible.grupo_nombre ? disponible.grupo_nombre + ' - ' : '' %><%= disponible.nombre %></option>
+                <% }) %>
+              </select>
+              <input name="precio" value="<%= servicio.precio %>" inputmode="numeric" pattern="[0-9]*" placeholder="Precio" required data-price-input>
+              <button class="icon danger" type="button" data-remove-service aria-label="Quitar servicio">x</button>
+            </div>
+          <% }) %>
+        </div>
+        <template data-service-template>
+          <div class="service-line">
+            <select name="servicio_id" required data-service-price>
+              <option value="">Servicio</option>
+              <% serviciosDisponibles.forEach((servicio) => { %>
+                <option value="<%= servicio.id %>" data-price="<%= servicio.precio_base %>"><%= servicio.grupo_nombre ? servicio.grupo_nombre + ' - ' : '' %><%= servicio.nombre %></option>
+              <% }) %>
+            </select>
+            <input name="precio" inputmode="numeric" pattern="[0-9]*" placeholder="Precio" required data-price-input>
+            <button class="icon danger" type="button" data-remove-service aria-label="Quitar servicio">x</button>
+          </div>
+        </template>
+        <div class="totals">
+          <span>Total <strong data-total>0</strong></span>
+          <span>Personal 40% <strong data-comision>0</strong></span>
+          <span>Lavadero 60% <strong data-saldo>0</strong></span>
+        </div>
+      </div>
+      <button type="submit">Guardar cambios</button>
+    </form>
+  </section>
+
   <section class="grid two">
     <% if (lavado.estado !== 'CREDITO') { %>
       <form class="panel stack" method="post" action="/lavados/<%= lavado.id %>/forma-pago">

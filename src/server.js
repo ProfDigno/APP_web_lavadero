@@ -69,8 +69,59 @@ app.use(
   })
 );
 
+app.use(async (req, res, next) => {
+  try {
+    const authorization = {
+      roll: null,
+      roleActive: true,
+      items: new Map(),
+      eventos: new Map()
+    };
+
+    if (req.session.user) {
+      const [rollResult, permissionsResult] = await Promise.all([
+        query(
+          `select ur.roll, ur.activo as role_active
+           from usuarios u
+           left join usuario_roll ur on ur.id = u.usuario_roll_id
+           where u.id = $1`,
+          [req.session.user.id]
+        ),
+        query(
+          `select ure.codigo_evento,
+                  uri.activo as item_activo,
+                  coalesce(ure.activo, true) as evento_activo
+           from usuario_roll_item uri
+           join usuarios u on u.usuario_roll_id = uri.usuario_roll_id
+           join usuario_roll_evento ure on ure.id = uri.usuario_roll_evento_id
+           where u.id = $1`,
+          [req.session.user.id]
+        )
+      ]);
+
+      authorization.roll = rollResult.rows[0]?.roll || null;
+      authorization.roleActive = rollResult.rows[0]?.roll ? rollResult.rows[0].role_active === true : true;
+      permissionsResult.rows.forEach((permission) => {
+        const itemAllowed = permission.item_activo === true && permission.evento_activo === true;
+        if (permission.codigo_evento) {
+          authorization.items.set(permission.codigo_evento, itemAllowed);
+          authorization.eventos.set(permission.codigo_evento, permission.evento_activo === true);
+        }
+      });
+    }
+
+    req.authorization = authorization;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
+  res.locals.userRoll = req.authorization?.roll || null;
+  res.locals.canItem = (codigo) => permissionAllowed(req.authorization?.items, codigo);
+  res.locals.canEvent = (codigo) => permissionAllowed(req.authorization?.eventos, codigo);
   res.locals.appVersion = config.version;
   res.locals.flash = req.session.flash || null;
   delete req.session.flash;
@@ -78,6 +129,7 @@ app.use((req, res, next) => {
   res.locals.formatDate = formatDate;
   res.locals.formatDateInput = formatDateInput;
   res.locals.formatDateTime = formatDateTime;
+  res.locals.formatDateTimeShort = formatDateTimeShort;
   res.locals.formatTime = formatTime;
   res.locals.paymentIconLabel = paymentIconLabel;
   res.locals.facturaSendEstadoLabel = facturaSendEstadoLabel;
@@ -99,7 +151,9 @@ function userErrorMessage(error) {
       grupo_cliente_nombre_key: "Ya existe un grupo de cliente con ese nombre.",
       formas_pago_nombre_key: "Ya existe una forma de pago con ese nombre.",
       gasto_tipo_nombre_key: "Ya existe un tipo de gasto con ese nombre.",
-      usuarios_login_key: "Ya existe un usuario con ese login."
+      usuarios_login_key: "Ya existe un usuario con ese login.",
+      usuario_roll_roll_key: "Ya existe ese rol.",
+      usuario_roll_evento_codigo_key: "Ya existe ese evento para el rol seleccionado."
     };
     return uniqueMessages[error.constraint] || "Ya existe un registro con esos datos.";
   }
@@ -108,7 +162,34 @@ function userErrorMessage(error) {
 
 function requireAuth(req, res, next) {
   if (!req.session.user) return res.redirect("/login");
+  if (req.authorization && req.authorization.roleActive === false) {
+    return req.session.destroy(() => res.redirect("/login"));
+  }
   next();
+}
+
+function permissionAllowed(permissions, code) {
+  if (!permissions || !permissions.has(code)) return true;
+  return permissions.get(code) === true;
+}
+
+function requirePermission(type, code) {
+  return (req, res, next) => {
+    const permissions = req.authorization?.[type];
+    if (permissionAllowed(permissions, code)) return next();
+    return res.status(403).render("error", {
+      title: "Acceso bloqueado",
+      message: `No tiene permiso para realizar esta acción (${code}).`
+    });
+  };
+}
+
+function requireItem(code) {
+  return requirePermission("items", code);
+}
+
+function requireEvent(code) {
+  return requirePermission("eventos", code);
 }
 
 function currentUser(req) {
@@ -206,6 +287,12 @@ function formatDateTime(value) {
   const parts = dateParts(value);
   if (!parts) return "";
   return `${padDatePart(parts.day)}-${padDatePart(parts.month)}-${parts.year} ${padDatePart(parts.hour)}:${padDatePart(parts.minute)}`;
+}
+
+function formatDateTimeShort(value) {
+  const parts = dateParts(value);
+  if (!parts) return "";
+  return `${padDatePart(parts.day)}/${padDatePart(parts.month)}/${String(parts.year).slice(-2)} ${padDatePart(parts.hour)}:${padDatePart(parts.minute)}`;
 }
 
 function formatDate(value) {
@@ -528,6 +615,13 @@ function normalizeArray(value) {
   return [value];
 }
 
+function splitCommission(total, count) {
+  const amount = Math.round(Number(total || 0) * 100);
+  const base = Math.floor(amount / count);
+  const remainder = amount - base * count;
+  return Array.from({ length: count }, (_, index) => (base + (index === 0 ? remainder : 0)) / 100);
+}
+
 function redirectLavadosWithForm(req, res, message) {
   req.session.lavadoForm = req.body;
   setFlash(req, "error", message);
@@ -567,20 +661,25 @@ async function getActiveMasterData() {
 async function applyCommission(client, lavado, sign, creadoPor) {
   const fechaResult = await client.query(`select creado_en::date as fecha from lavados where id = $1`, [lavado.id]);
   const fecha = fechaResult.rows[0].fecha;
-  const total = Number(lavado.total) * sign;
-  const comision = Number(lavado.comision_personal) * sign;
-  const count = sign > 0 ? 1 : -1;
-
-  await client.query(
-    `insert into comisiones_diarias
-       (fecha, personal_id, total_lavados_emitidos, total_servicios, total_comision_40, creado_por)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (fecha, personal_id) do update set
-       total_lavados_emitidos = greatest(0, comisiones_diarias.total_lavados_emitidos + excluded.total_lavados_emitidos),
-       total_servicios = greatest(0, comisiones_diarias.total_servicios + excluded.total_servicios),
-       total_comision_40 = greatest(0, comisiones_diarias.total_comision_40 + excluded.total_comision_40)`,
-    [fecha, lavado.personal_id, count, total, comision, creadoPor]
+  const relations = await client.query(
+    `select personal_id, comision from lavado_personal where lavado_id = $1 order by id`,
+    [lavado.id]
   );
+  if (!relations.rows.length) return;
+  const serviceShares = splitCommission(lavado.total, relations.rows.length);
+  const count = sign > 0 ? 1 : -1;
+  for (const [index, relation] of relations.rows.entries()) {
+    await client.query(
+      `insert into comisiones_diarias
+         (fecha, personal_id, total_lavados_emitidos, total_servicios, total_comision_40, creado_por)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (fecha, personal_id) do update set
+         total_lavados_emitidos = greatest(0, comisiones_diarias.total_lavados_emitidos + excluded.total_lavados_emitidos),
+         total_servicios = greatest(0, comisiones_diarias.total_servicios + excluded.total_servicios),
+         total_comision_40 = greatest(0, comisiones_diarias.total_comision_40 + excluded.total_comision_40)`,
+      [fecha, relation.personal_id, count, serviceShares[index] * sign, Number(relation.comision) * sign, creadoPor]
+    );
+  }
 }
 
 async function applyVale(client, vale, sign, creadoPor) {
@@ -634,16 +733,18 @@ async function getGrupoCreditoDetail(creditoId) {
 
   const lavados = await query(
     `select l.*, c.chapa, c.marca_modelo, c.ruc, c.nombre as cliente_nombre,
-            p.nombre as personal_nombre,
-            coalesce(string_agg(s.nombre || ' (Gs. ' || replace(to_char(round(ls.precio), 'FM999,999,999,999'), ',', '.') || ')', ', ' order by ls.id), '') as servicios
+            coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre,
+            coalesce((select string_agg(s2.nombre || ' (Gs. ' || replace(to_char(round(ls2.precio), 'FM999,999,999,999'), ',', '.') || ')', ', ' order by ls2.id)
+                      from lavado_servicios ls2
+                      join servicios s2 on s2.id = ls2.servicio_id
+                      where ls2.lavado_id = l.id), '') as servicios
      from lavados l
      join clientes c on c.id = l.cliente_id
-     join personal p on p.id = l.personal_id
-     left join lavado_servicios ls on ls.lavado_id = l.id
-     left join servicios s on s.id = ls.servicio_id
+     left join lavado_personal lp on lp.lavado_id = l.id
+     left join personal p on p.id = lp.personal_id
      where l.grupo_cliente_credito_id = $1
        and l.estado <> 'ANULADO'
-     group by l.id, c.chapa, c.marca_modelo, c.ruc, c.nombre, p.nombre
+     group by l.id, c.chapa, c.marca_modelo, c.ruc, c.nombre
      order by l.creado_en, l.id`,
     [creditoId]
   );
@@ -684,16 +785,18 @@ async function getCajaDia(fecha) {
   const [lavadosResult, creditosResult, gastosResult, valesResult] = await Promise.all([
     query(
       `select l.*, c.chapa, c.marca_modelo, c.nombre as cliente_nombre,
-              p.nombre as personal_nombre,
+              coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre,
               fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
        from lavados l
        join clientes c on c.id = l.cliente_id
-       join personal p on p.id = l.personal_id
+       left join lavado_personal lp on lp.lavado_id = l.id
+       left join personal p on p.id = lp.personal_id
        join formas_pago fp on fp.id = l.forma_pago_id
        where l.creado_en::date = $1
          and l.estado <> 'ANULADO'
          and l.condicion = 'CONTADO'
          and l.grupo_cliente_credito_id is null
+       group by l.id, c.chapa, c.marca_modelo, c.nombre, fp.nombre, fp.icono_ruta, fp.color
        order by l.id desc`,
       [fecha]
     ),
@@ -1038,13 +1141,21 @@ app.get("/login", (req, res) => {
 
 app.post("/login", async (req, res, next) => {
   try {
-    const result = await query(`select * from usuarios where login = $1 and activo = true`, [req.body.login]);
+    const result = await query(
+      `select u.*, ur.roll
+       from usuarios u
+       left join usuario_roll ur on ur.id = u.usuario_roll_id
+       where u.login = $1
+         and u.activo = true
+         and (ur.id is null or ur.activo = true)`,
+      [req.body.login]
+    );
     const user = result.rows[0];
     if (!user || !(await bcrypt.compare(req.body.password || "", user.password_hash))) {
       setFlash(req, "error", "Usuario o clave incorrectos.");
       return res.redirect("/login");
     }
-    req.session.user = { id: user.id, login: user.login, nombre: user.nombre };
+    req.session.user = { id: user.id, login: user.login, nombre: user.nombre, roll: user.roll || null };
     res.redirect("/");
   } catch (error) {
     next(error);
@@ -1082,12 +1193,15 @@ app.get("/", requireAuth, async (req, res, next) => {
         [fecha]
       ),
       query(
-        `select l.*, c.chapa, c.marca_modelo, p.nombre as personal_nombre,
+        `select l.*, c.chapa, c.marca_modelo,
+                coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre,
                 fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
          from lavados l
          join clientes c on c.id = l.cliente_id
-         join personal p on p.id = l.personal_id
+         left join lavado_personal lp on lp.lavado_id = l.id
+         left join personal p on p.id = lp.personal_id
          join formas_pago fp on fp.id = l.forma_pago_id
+         group by l.id, c.chapa, c.marca_modelo, fp.nombre, fp.icono_ruta, fp.color
          order by l.id desc
          limit 8`
       )
@@ -1216,14 +1330,22 @@ app.get("/analisis-lavados", requireAuth, async (req, res, next) => {
         params
       ),
       query(
-        `select p.nombre,
-                count(l.id)::int as lavados,
-                coalesce(sum(l.total), 0) as total_servicios,
-                coalesce(sum(l.comision_personal), 0) as comision
-         from lavados l
-         join personal p on p.id = l.personal_id
-         where l.creado_en::date between $1 and $2
-           and l.estado <> 'ANULADO'
+        `with reparto as (
+           select l.id as lavado_id, l.total, lp.personal_id,
+                  count(*) over (partition by lp.lavado_id) as cantidad,
+                  row_number() over (partition by lp.lavado_id order by lp.id) as posicion,
+                  lp.comision
+           from lavados l
+           join lavado_personal lp on lp.lavado_id = l.id
+           where l.creado_en::date between $1 and $2
+             and l.estado <> 'ANULADO'
+         )
+         select p.nombre,
+                count(r.lavado_id)::int as lavados,
+                coalesce(sum((floor(round(r.total * 100) / r.cantidad) + case when r.posicion = 1 then mod(round(r.total * 100), r.cantidad) else 0 end) / 100.0), 0) as total_servicios,
+                coalesce(sum(r.comision), 0) as comision
+         from reparto r
+         join personal p on p.id = r.personal_id
          group by p.id, p.nombre
          order by lavados desc, total_servicios desc, p.nombre`,
         params
@@ -1231,15 +1353,17 @@ app.get("/analisis-lavados", requireAuth, async (req, res, next) => {
       query(
         `select l.*, c.chapa, c.marca_modelo, c.nombre as cliente_nombre,
                 coalesce(gc.nombre, 'Sin grupo') as grupo_cliente_nombre,
-                p.nombre as personal_nombre,
+                coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre,
                 fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
          from lavados l
          join clientes c on c.id = l.cliente_id
          left join grupo_cliente gc on gc.id = c.grupo_cliente_id
-         join personal p on p.id = l.personal_id
+         left join lavado_personal lp on lp.lavado_id = l.id
+         left join personal p on p.id = lp.personal_id
          join formas_pago fp on fp.id = l.forma_pago_id
          where l.creado_en::date between $1 and $2
            and l.estado <> 'ANULADO'
+         group by l.id, c.chapa, c.marca_modelo, c.nombre, gc.nombre, fp.nombre, fp.icono_ruta, fp.color
          order by l.creado_en desc, l.id desc
          limit 100`,
         params
@@ -1300,14 +1424,17 @@ app.get("/lavados", requireAuth, async (req, res, next) => {
     delete req.session.lavadoForm;
     const data = await getActiveMasterData();
     const lavados = await query(
-      `select l.*, c.chapa, c.marca_modelo, p.nombre as personal_nombre,
+      `select l.*, c.chapa, c.marca_modelo,
+              coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre,
               count(*) filter (where l.estado = 'EMITIDO') over (partition by c.chapa, l.creado_en::date) as duplicado_emitido_dia,
               fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
        from lavados l
        join clientes c on c.id = l.cliente_id
-       join personal p on p.id = l.personal_id
+       left join lavado_personal lp on lp.lavado_id = l.id
+       left join personal p on p.id = lp.personal_id
        join formas_pago fp on fp.id = l.forma_pago_id
        where l.creado_en::date = $1
+       group by l.id, c.chapa, c.marca_modelo, fp.nombre, fp.icono_ruta, fp.color
        order by ${formasPagoOrderSql("fp")}, l.id desc
        limit 100`,
       [fecha]
@@ -1743,13 +1870,8 @@ app.post("/lavados", requireAuth, async (req, res, next) => {
     if (!servicioIds.length) {
       return redirectLavadosWithForm(req, res, "Seleccione al menos un servicio.");
     }
-    if (!req.body.personal_id) {
-      return redirectLavadosWithForm(req, res, "Seleccione el personal que va a lavar.");
-    }
-    const personalId = Number(req.body.personal_id);
-    if (!Number.isInteger(personalId) || personalId <= 0) {
-      return redirectLavadosWithForm(req, res, "Seleccione un personal valido.");
-    }
+    const personalIds = [...new Set(normalizeArray(req.body.personal_id).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    if (!personalIds.length) return redirectLavadosWithForm(req, res, "Seleccione al menos un personal.");
 
     const creadoPor = currentUser(req);
     const lavadoId = await withTransaction(async (client) => {
@@ -1807,13 +1929,25 @@ app.post("/lavados", requireAuth, async (req, res, next) => {
 
       const lavadoResult = await client.query(
         `insert into lavados
-           (cliente_id, personal_id, condicion, forma_pago_id, estado, total, comision_personal, saldo_lavadero, grupo_cliente_credito_id, creado_por)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           (cliente_id, condicion, forma_pago_id, estado, total, comision_personal, saldo_lavadero, grupo_cliente_credito_id, creado_por)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          returning *`,
-        [clienteId, personalId, condicion, forma.rows[0].id, estadoPorFormaPago(formaDefault), total, comision, saldo, grupoCreditoId, creadoPor]
+        [clienteId, condicion, forma.rows[0].id, estadoPorFormaPago(formaDefault), total, comision, saldo, grupoCreditoId, creadoPor]
       );
 
       const lavado = lavadoResult.rows[0];
+      const personalResult = await client.query(
+        `select id from personal where id = any($1::int[]) and activo = true order by array_position($1::int[], id)`,
+        [personalIds]
+      );
+      if (personalResult.rows.length !== personalIds.length) throw new Error("Uno de los personales seleccionados no esta disponible.");
+      const commissions = splitCommission(comision, personalIds.length);
+      for (const [index, personalId] of personalIds.entries()) {
+        await client.query(
+          `insert into lavado_personal (lavado_id, personal_id, comision, creado_por) values ($1, $2, $3, $4)`,
+          [lavado.id, personalId, commissions[index], creadoPor]
+        );
+      }
       for (const item of selected) {
         await client.query(
           `insert into lavado_servicios (lavado_id, servicio_id, precio, creado_por)
@@ -1836,17 +1970,19 @@ app.get("/lavados/:id", requireAuth, async (req, res, next) => {
   try {
     const lavado = await query(
       `select l.*, c.chapa, c.marca_modelo, c.ruc, c.nombre as cliente_nombre,
-              p.nombre as personal_nombre, fp.nombre as forma_pago,
+              coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre, fp.nombre as forma_pago,
               fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
        from lavados l
        join clientes c on c.id = l.cliente_id
-       join personal p on p.id = l.personal_id
+       left join lavado_personal lp on lp.lavado_id = l.id
+       left join personal p on p.id = lp.personal_id
        join formas_pago fp on fp.id = l.forma_pago_id
-       where l.id = $1`,
+       where l.id = $1
+       group by l.id, c.chapa, c.marca_modelo, c.ruc, c.nombre, fp.nombre, fp.icono_ruta, fp.color`,
       [req.params.id]
     );
     if (!lavado.rows[0]) return res.status(404).render("error", { title: "No encontrado", message: "Lavado no encontrado." });
-    const [servicios, formasPago] = await Promise.all([
+    const [servicios, formasPago, personal, personalLavado] = await Promise.all([
       query(
         `select ls.*, s.nombre
          from lavado_servicios ls
@@ -1855,16 +1991,106 @@ app.get("/lavados/:id", requireAuth, async (req, res, next) => {
          order by ls.id`,
         [req.params.id]
       ),
-      query(`select * from formas_pago where activo = true and mostrar_despues_crear = true and nombre <> 'ANULADO' order by ${formasPagoOrderSql()}`)
+      query(`select * from formas_pago where activo = true and mostrar_despues_crear = true and nombre <> 'ANULADO' order by ${formasPagoOrderSql()}`),
+      query(`select * from personal where activo = true order by nombre`),
+      query(`select personal_id from lavado_personal where lavado_id = $1 order by id`, [req.params.id])
     ]);
+    const serviciosActivos = await query(
+      `select s.*, sg.nombre as grupo_nombre
+       from servicios s
+       left join servicio_grupo sg on sg.id = s.servicio_grupo_id
+       where s.activo = true
+          or exists (select 1 from lavado_servicios ls where ls.lavado_id = $1 and ls.servicio_id = s.id)
+       order by sg.nombre nulls last, s.nombre`,
+      [req.params.id]
+    );
     res.render("lavados/detail", {
       title: `Lavado #${req.params.id}`,
       lavado: lavado.rows[0],
       servicios: servicios.rows,
-      formasPago: formasPago.rows
+      serviciosDisponibles: serviciosActivos.rows,
+      formasPago: formasPago.rows,
+      personal: personal.rows,
+      personalIds: personalLavado.rows.map((row) => String(row.personal_id))
     });
   } catch (error) {
     next(error);
+  }
+});
+
+app.post("/lavados/:id/editar", requireAuth, async (req, res, next) => {
+  try {
+    const creadoPor = currentUser(req);
+    await withTransaction(async (client) => {
+      const lavadoResult = await client.query(`select * from lavados where id = $1 for update`, [req.params.id]);
+      const lavado = lavadoResult.rows[0];
+      if (!lavado) throw new Error("Lavado no encontrado.");
+      if (lavado.estado === "ANULADO") throw new Error("No se puede editar un lavado anulado.");
+
+      const personalIds = [...new Set(normalizeArray(req.body.personal_id)
+        .map(Number)
+        .filter((id) => Number.isInteger(id) && id > 0))];
+      if (!personalIds.length) throw new Error("Seleccione al menos un personal.");
+
+      const servicioIds = normalizeArray(req.body.servicio_id).map(Number);
+      const precios = normalizeArray(req.body.precio);
+      if (!servicioIds.length || servicioIds.length !== precios.length || servicioIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+        throw new Error("Agregue al menos un servicio válido.");
+      }
+
+      const personalResult = await client.query(
+        `select id from personal where id = any($1::int[]) and activo = true`,
+        [personalIds]
+      );
+      if (personalResult.rows.length !== personalIds.length) throw new Error("Uno de los personales seleccionados no está disponible.");
+
+      const serviciosResult = await client.query(
+        `select id
+         from servicios
+         where id = any($1::int[])
+           and (activo = true or exists (
+             select 1 from lavado_servicios ls
+             where ls.lavado_id = $2 and ls.servicio_id = servicios.id
+           ))`,
+        [servicioIds, lavado.id]
+      );
+      if (serviciosResult.rows.length !== new Set(servicioIds).size) throw new Error("Uno de los servicios seleccionados no está disponible.");
+
+      const selected = servicioIds.map((servicioId, index) => ({ servicioId, precio: toMoney(precios[index]) }));
+      if (selected.some((item) => item.precio < 0)) throw new Error("Los precios no pueden ser negativos.");
+      const total = selected.reduce((sum, item) => sum + item.precio, 0);
+      const comision = Math.round(total * 40) / 100;
+      const saldo = Math.round(total * 60) / 100;
+
+      await applyCommission(client, lavado, -1, creadoPor);
+      await client.query(
+        `update lavados set total = $1, comision_personal = $2, saldo_lavadero = $3 where id = $4`,
+        [total, comision, saldo, lavado.id]
+      );
+      await client.query(`delete from lavado_personal where lavado_id = $1`, [lavado.id]);
+      await client.query(`delete from lavado_servicios where lavado_id = $1`, [lavado.id]);
+
+      const commissions = splitCommission(comision, personalIds.length);
+      for (const [index, personalId] of personalIds.entries()) {
+        await client.query(
+          `insert into lavado_personal (lavado_id, personal_id, comision, creado_por) values ($1, $2, $3, $4)`,
+          [lavado.id, personalId, commissions[index], creadoPor]
+        );
+      }
+      for (const item of selected) {
+        await client.query(
+          `insert into lavado_servicios (lavado_id, servicio_id, precio, creado_por) values ($1, $2, $3, $4)`,
+          [lavado.id, item.servicioId, item.precio, creadoPor]
+        );
+      }
+
+      await applyCommission(client, { ...lavado, total }, 1, creadoPor);
+    });
+    setFlash(req, "success", `Lavado #${req.params.id} actualizado correctamente.`);
+    res.redirect(`/lavados/${req.params.id}`);
+  } catch (error) {
+    setFlash(req, "error", userErrorMessage(error));
+    res.redirect(`/lavados/${req.params.id}`);
   }
 });
 
@@ -1920,6 +2146,7 @@ app.post("/lavados/:id/anular", requireAuth, async (req, res, next) => {
         [formaAnulado.rows[0].id, creadoPor, req.params.id]
       );
       await applyCommission(client, lavado, -1, creadoPor);
+      await client.query(`update lavado_personal set comision = 0 where lavado_id = $1`, [req.params.id]);
     });
     setFlash(req, "success", "Lavado anulado y comision descontada.");
     res.redirect(`/lavados/${req.params.id}`);
@@ -2384,11 +2611,24 @@ app.get("/comisiones", requireAuth, async (req, res, next) => {
         [fecha]
       ),
       query(
-        `select l.*, c.chapa, c.marca_modelo, g.nombre as grupo_cliente_nombre,
+        `with reparto as (
+           select lp.id as relacion_id, lp.lavado_id, lp.personal_id, lp.comision,
+                  floor(round(l.total * 100) / count(*) over (partition by lp.lavado_id))
+                    + case when row_number() over (partition by lp.lavado_id order by lp.id) = 1
+                        then mod(round(l.total * 100), count(*) over (partition by lp.lavado_id)) else 0 end as total_servicios_centavos
+           from lavado_personal lp
+           join lavados l on l.id = lp.lavado_id
+         )
+         select l.*, reparto.personal_id, reparto.comision as comision_personal,
+                reparto.total_servicios_centavos / 100.0 as total_servicios_personal,
+                c.chapa, c.marca_modelo, g.nombre as grupo_cliente_nombre,
+                p.nombre as personal_nombre,
                 fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
          from lavados l
          join clientes c on c.id = l.cliente_id
          left join grupo_cliente g on g.id = c.grupo_cliente_id
+         join reparto on reparto.lavado_id = l.id
+         join personal p on p.id = reparto.personal_id
          join formas_pago fp on fp.id = l.forma_pago_id
          where l.creado_en::date = $1
          order by l.creado_en, l.id`,
@@ -2434,7 +2674,7 @@ app.get("/analisis-personal", requireAuth, async (req, res, next) => {
     const parsedPersonalId = personalIdParam && personalIdParam !== "todos" ? Number(personalIdParam) : null;
     const selectedPersonalId = Number.isFinite(parsedPersonalId) && parsedPersonalId > 0 ? parsedPersonalId : null;
     const personalFilter = selectedPersonalId ? "and p.id = $3" : "";
-    const movementFilter = selectedPersonalId ? "and personal_id = $3" : "";
+    const movementFilter = selectedPersonalId ? "and lp.personal_id = $3" : "";
     const queryParams = selectedPersonalId ? [fechaInicio, fechaFin, selectedPersonalId] : [fechaInicio, fechaFin];
 
     const [personalResult, resumenResult, lavadosResult, comisionesResult, valesResult] = await Promise.all([
@@ -2472,15 +2712,28 @@ app.get("/analisis-personal", requireAuth, async (req, res, next) => {
         queryParams
       ),
       query(
-        `select l.*, c.chapa, c.marca_modelo, g.nombre as grupo_cliente_nombre,
-                fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
+            `with reparto as (
+               select lp.id as relacion_id, lp.lavado_id, lp.personal_id, lp.comision,
+                      floor(round(l.total * 100) / count(*) over (partition by lp.lavado_id))
+                        + case when row_number() over (partition by lp.lavado_id order by lp.id) = 1
+                            then mod(round(l.total * 100), count(*) over (partition by lp.lavado_id)) else 0 end as total_servicios_centavos
+               from lavado_personal lp
+               join lavados l on l.id = lp.lavado_id
+             )
+            select l.*, reparto.personal_id, reparto.comision as comision_personal,
+                      reparto.total_servicios_centavos / 100.0 as total_servicios_personal,
+                      c.chapa, c.marca_modelo, g.nombre as grupo_cliente_nombre,
+                      p.nombre as personal_nombre,
+                      fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
          from lavados l
          join clientes c on c.id = l.cliente_id
          left join grupo_cliente g on g.id = c.grupo_cliente_id
+         join reparto on reparto.lavado_id = l.id
+         join personal p on p.id = reparto.personal_id
          join formas_pago fp on fp.id = l.forma_pago_id
          where l.creado_en::date between $1 and $2
            and l.estado <> 'ANULADO'
-           ${movementFilter.replace("personal_id", "l.personal_id")}
+           ${movementFilter}
          order by l.creado_en desc, l.id desc`,
         queryParams
       ),
@@ -2491,7 +2744,7 @@ app.get("/analisis-personal", requireAuth, async (req, res, next) => {
          from comisiones_diarias cd
          join personal p on p.id = cd.personal_id
          where cd.fecha between $1 and $2
-           ${movementFilter.replace("personal_id", "cd.personal_id")}
+           ${selectedPersonalId ? "and cd.personal_id = $3" : ""}
          order by cd.fecha desc, p.nombre`,
         queryParams
       ),
@@ -2503,7 +2756,7 @@ app.get("/analisis-personal", requireAuth, async (req, res, next) => {
          join formas_pago fp on fp.id = v.forma_pago_id
          where v.fecha_pago between $1 and $2
            and v.estado <> 'ANULADO'
-           ${movementFilter.replace("personal_id", "v.personal_id")}
+           ${selectedPersonalId ? "and v.personal_id = $3" : ""}
          order by v.fecha_pago desc, v.id desc`,
         queryParams
       )
@@ -2852,14 +3105,33 @@ app.post("/gastos/:id/anular", requireAuth, async (req, res) => {
 app.get("/usuarios", requireAuth, async (req, res, next) => {
   try {
     const editId = req.query.edit;
-    const [usuarios, editItem] = await Promise.all([
-      query(`select id, login, nombre, activo, creado_en, creado_por from usuarios order by id desc`),
-      editId ? query(`select id, login, nombre, activo from usuarios where id = $1`, [editId]) : Promise.resolve({ rows: [] })
+    const [usuarios, editItem, rolls] = await Promise.all([
+      query(
+        `select u.id, u.login, u.nombre, u.activo, u.creado_en, u.creado_por, ur.roll, ur.activo as roll_activo
+         from usuarios u
+         left join usuario_roll ur on ur.id = u.usuario_roll_id
+         order by u.id desc`
+      ),
+      editId ? query(
+        `select u.id, u.login, u.nombre, u.activo, u.usuario_roll_id, ur.roll, ur.activo as roll_activo
+         from usuarios u
+         left join usuario_roll ur on ur.id = u.usuario_roll_id
+         where u.id = $1`,
+        [editId]
+      ) : Promise.resolve({ rows: [] }),
+      query(
+        `select id, roll, activo
+         from usuario_roll
+         where activo = true or id = coalesce((select usuario_roll_id from usuarios where id = $1), 0)
+         order by roll`,
+        [editId || 0]
+      )
     ]);
     res.render("usuarios", {
       title: "Usuarios",
       usuarios: usuarios.rows,
-      editItem: editItem.rows[0] || null
+      editItem: editItem.rows[0] || null,
+      rolls: rolls.rows
     });
   } catch (error) {
     next(error);
@@ -2869,17 +3141,22 @@ app.get("/usuarios", requireAuth, async (req, res, next) => {
 app.post("/usuarios", requireAuth, async (req, res) => {
   try {
     const passwordHash = await bcrypt.hash(req.body.password || "", 10);
-    await query(
-      `insert into usuarios (login, password_hash, nombre, activo, creado_por)
-       values ($1, $2, $3, $4, $5)`,
-      [
-        String(req.body.login || "").trim(),
-        passwordHash,
-        String(req.body.nombre || "").trim(),
-        req.body.activo === "on",
-        currentUser(req)
-      ]
-    );
+    const rollId = req.body.usuario_roll_id ? Number(req.body.usuario_roll_id) : null;
+    await withTransaction(async (client) => {
+      const result = await client.query(
+        `insert into usuarios (login, password_hash, nombre, activo, creado_por)
+         values ($1, $2, $3, $4, $5)
+         returning id`,
+        [
+          String(req.body.login || "").trim(),
+          passwordHash,
+          String(req.body.nombre || "").trim(),
+          req.body.activo === "on",
+          currentUser(req)
+        ]
+      );
+      if (rollId) await client.query(`update usuarios set usuario_roll_id = $1 where id = $2`, [rollId, result.rows[0].id]);
+    });
     setFlash(req, "success", "Usuario creado.");
     res.redirect("/usuarios");
   } catch (error) {
@@ -2896,27 +3173,34 @@ app.post("/usuarios/:id", requireAuth, async (req, res) => {
       req.body.activo === "on",
       req.params.id
     ];
+    const rollId = req.body.usuario_roll_id ? Number(req.body.usuario_roll_id) : null;
 
-    if (req.body.password) {
-      const passwordHash = await bcrypt.hash(req.body.password, 10);
-      await query(
-        `update usuarios
-         set login = $1, nombre = $2, activo = $3, password_hash = $4
-         where id = $5`,
-        [values[0], values[1], values[2], passwordHash, values[3]]
-      );
-    } else {
-      await query(
-        `update usuarios
-         set login = $1, nombre = $2, activo = $3
-         where id = $4`,
-        values
-      );
-    }
+    await withTransaction(async (client) => {
+      if (req.body.password) {
+        const passwordHash = await bcrypt.hash(req.body.password, 10);
+        await client.query(
+          `update usuarios
+           set login = $1, nombre = $2, activo = $3, password_hash = $4
+           where id = $5`,
+          [values[0], values[1], values[2], passwordHash, values[3]]
+        );
+      } else {
+        await client.query(
+          `update usuarios
+           set login = $1, nombre = $2, activo = $3
+           where id = $4`,
+          values
+        );
+      }
+
+      await client.query(`update usuarios set usuario_roll_id = $1 where id = $2`, [rollId, req.params.id]);
+    });
 
     if (Number(req.params.id) === Number(req.session.user.id)) {
       req.session.user.login = values[0];
       req.session.user.nombre = values[1];
+      const selectedRoll = rollId ? await query(`select roll from usuario_roll where id = $1`, [rollId]) : { rows: [] };
+      req.session.user.roll = selectedRoll.rows[0]?.roll || null;
     }
 
     setFlash(req, "success", "Usuario actualizado.");
@@ -2936,6 +3220,189 @@ app.post("/usuarios/:id/toggle", requireAuth, async (req, res, next) => {
     await query(`update usuarios set activo = not activo where id = $1`, [req.params.id]);
     setFlash(req, "success", "Estado actualizado.");
     res.redirect("/usuarios");
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/usuario-roll", requireAuth, async (req, res, next) => {
+  try {
+    const editRoleId = req.query.edit || req.query.edit_role;
+    const [roles, items, eventos, editRole] = await Promise.all([
+      query(
+        `select ur.id, ur.roll, ur.activo, ur.creado_en, count(distinct u.id)::int as usuarios_count,
+                count(distinct uri.id)::int as items_count
+         from usuario_roll ur
+         left join usuarios u on u.usuario_roll_id = ur.id
+         left join usuario_roll_item uri on uri.usuario_roll_id = ur.id
+         group by ur.id
+         order by ur.roll`
+      ),
+      query(
+        `select uri.*, ur.roll, ure.nombre as evento_nombre, ure.codigo_evento
+         from usuario_roll_item uri
+         join usuario_roll ur on ur.id = uri.usuario_roll_id
+         left join usuario_roll_evento ure on ure.id = uri.usuario_roll_evento_id
+         order by ur.roll, ure.codigo_evento`
+      ),
+      query(`select id, nombre, codigo_evento from usuario_roll_evento order by codigo_evento`),
+      editRoleId ? query(`select * from usuario_roll where id = $1`, [editRoleId]) : Promise.resolve({ rows: [] })
+    ]);
+    res.render("usuario_roll", {
+      title: "Roll",
+      roles: roles.rows,
+      items: items.rows,
+      eventos: eventos.rows,
+      editRole: editRole.rows[0] || null
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/usuario-roll", requireAuth, async (req, res) => {
+  try {
+    const creadoPor = currentUser(req);
+    await withTransaction(async (client) => {
+      const roleResult = await client.query(
+        `insert into usuario_roll (roll, activo, creado_por)
+         values ($1, $2, $3)
+         returning id`,
+        [String(req.body.roll || "").trim(), req.body.activo === "on", creadoPor]
+      );
+      await client.query(
+        `insert into usuario_roll_item
+           (usuario_roll_id, usuario_roll_evento_id, activo, creado_por)
+         select $1, id, true, $2
+         from usuario_roll_evento
+         where activo = true
+         on conflict (usuario_roll_id, usuario_roll_evento_id) do nothing`,
+        [roleResult.rows[0].id, creadoPor]
+      );
+    });
+    setFlash(req, "success", "Roll creado.");
+    res.redirect("/usuario-roll");
+  } catch (error) {
+    setFlash(req, "error", userErrorMessage(error));
+    res.redirect("/usuario-roll");
+  }
+});
+
+app.post("/usuario-roll/:id", requireAuth, async (req, res) => {
+  try {
+    await query(
+      `update usuario_roll set roll = $1, activo = $2 where id = $3`,
+      [String(req.body.roll || "").trim(), req.body.activo === "on", req.params.id]
+    );
+    setFlash(req, "success", "Roll actualizado.");
+    res.redirect("/usuario-roll");
+  } catch (error) {
+    setFlash(req, "error", userErrorMessage(error));
+    res.redirect(`/usuario-roll?edit=${req.params.id}`);
+  }
+});
+
+app.post("/usuario-roll/:id/toggle", requireAuth, async (req, res, next) => {
+  try {
+    await query(`update usuario_roll set activo = not activo where id = $1`, [req.params.id]);
+    setFlash(req, "success", "Estado del roll actualizado.");
+    res.redirect("/usuario-roll");
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/usuario-roll-item/:id/toggle", requireAuth, async (req, res, next) => {
+  try {
+    await query(`update usuario_roll_item set activo = not activo where id = $1`, [req.params.id]);
+    setFlash(req, "success", "Estado del ítem actualizado.");
+    res.redirect("/usuario-roll");
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/usuario-roll-eventos", requireAuth, async (req, res, next) => {
+  try {
+    const [eventos, editEvento] = await Promise.all([
+      query(
+        `select ure.*, count(uri.id)::int as items_count
+         from usuario_roll_evento ure
+         left join usuario_roll_item uri on uri.usuario_roll_evento_id = ure.id
+         group by ure.id
+         order by ure.codigo_evento`
+      ),
+      req.query.edit ? query(
+        `select ure.*
+         from usuario_roll_evento ure
+         where ure.id = $1`,
+        [req.query.edit]
+      ) : Promise.resolve({ rows: [] })
+    ]);
+    res.render("usuario_roll_eventos", {
+      title: "Eventos",
+      eventos: eventos.rows,
+      editEvento: editEvento.rows[0] || null
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/usuario-roll-eventos", requireAuth, async (req, res) => {
+  try {
+    const creadoPor = currentUser(req);
+    await withTransaction(async (client) => {
+      const eventResult = await client.query(
+        `insert into usuario_roll_evento
+           (nombre, descripcion, codigo_evento, activo, creado_por)
+         values ($1, $2, $3, $4, $5)
+         returning id`,
+        [
+          String(req.body.nombre || "").trim(),
+          String(req.body.descripcion || "").trim() || null,
+          String(req.body.codigo_evento || "").trim(),
+          req.body.activo === "on",
+          creadoPor
+        ]
+      );
+      await client.query(
+        `insert into usuario_roll_item
+           (usuario_roll_id, usuario_roll_evento_id, activo, creado_por)
+         select id, $1, true, $2
+         from usuario_roll
+         where activo = true
+         on conflict (usuario_roll_id, usuario_roll_evento_id) do nothing`,
+        [eventResult.rows[0].id, creadoPor]
+      );
+    });
+    setFlash(req, "success", "Evento creado.");
+    res.redirect("/usuario-roll-eventos");
+  } catch (error) {
+    setFlash(req, "error", userErrorMessage(error));
+    res.redirect("/usuario-roll-eventos");
+  }
+});
+
+app.post("/usuario-roll-eventos/:id", requireAuth, async (req, res) => {
+  try {
+    await query(
+      `update usuario_roll_evento set descripcion = $1, activo = $2 where id = $3`,
+      [String(req.body.descripcion || "").trim() || null, req.body.activo === "on", req.params.id]
+    );
+    setFlash(req, "success", "Evento actualizado.");
+    res.redirect("/usuario-roll-eventos");
+  } catch (error) {
+    setFlash(req, "error", userErrorMessage(error));
+    res.redirect(`/usuario-roll-eventos?edit=${req.params.id}`);
+  }
+});
+
+app.post("/usuario-roll-eventos/:id/toggle", requireAuth, async (req, res, next) => {
+  try {
+    await query(`update usuario_roll_evento set activo = not activo where id = $1`, [req.params.id]);
+    setFlash(req, "success", "Estado del evento actualizado.");
+    res.redirect("/usuario-roll-eventos");
   } catch (error) {
     next(error);
   }
@@ -2992,10 +3459,18 @@ function crudValues(fields, req, omitEmptyImage) {
   }, []);
 }
 
-function crudRoutes(pathName, table, fields, title) {
+function crudRoutes(pathName, table, fields, title, authorization = {}) {
   const uploadMiddleware = crudUploadMiddleware(fields, pathName);
+  const accessMiddleware = [
+    requireAuth,
+    authorization.item ? requireItem(authorization.item) : null
+  ].filter(Boolean);
+  const mutationMiddleware = [
+    ...accessMiddleware,
+    authorization.event ? requireEvent(authorization.event) : null
+  ].filter(Boolean);
 
-  app.get(`/${pathName}`, requireAuth, async (req, res, next) => {
+  app.get(`/${pathName}`, ...accessMiddleware, async (req, res, next) => {
     try {
       const editId = req.query.edit;
       const searchTerm = String(req.query.q || "").trim();
@@ -3067,12 +3542,15 @@ function crudRoutes(pathName, table, fields, title) {
           const clientId = String(client.id);
           const currentOffset = selectedRelatedId === clientId ? clientLavadosOffset : 0;
           const lavadosResult = await query(
-            `select l.*, p.nombre as personal_nombre,
+            `select l.*,
+                    coalesce(string_agg(distinct p.nombre, ', ' order by p.nombre), '') as personal_nombre,
                     fp.nombre as forma_pago, fp.icono_ruta as forma_pago_icono, fp.color as forma_pago_color
              from lavados l
-             join personal p on p.id = l.personal_id
+             left join lavado_personal lp on lp.lavado_id = l.id
+             left join personal p on p.id = lp.personal_id
              join formas_pago fp on fp.id = l.forma_pago_id
              where l.cliente_id = $1
+             group by l.id, fp.nombre, fp.icono_ruta, fp.color
              order by l.creado_en desc, l.id desc
              limit $2 offset $3`,
             [client.id, clientLavadosLimit, currentOffset]
@@ -3145,10 +3623,11 @@ function crudRoutes(pathName, table, fields, title) {
         }
 
         const lavadosCount = await query(
-          `select personal_id, count(*)::int as total
-           from lavados
-           where personal_id = any($1::int[])
-           group by personal_id`,
+          `select lp.personal_id, count(*)::int as total
+           from lavado_personal lp
+           join lavados l on l.id = lp.lavado_id
+           where lp.personal_id = any($1::int[])
+           group by lp.personal_id`,
           [personalIds]
         );
         lavadosCount.rows.forEach((row) => {
@@ -3177,8 +3656,10 @@ function crudRoutes(pathName, table, fields, title) {
                from lavados l
                join clientes c on c.id = l.cliente_id
                left join grupo_cliente g on g.id = c.grupo_cliente_id
+               join lavado_personal lp on lp.lavado_id = l.id
+               join personal p on p.id = lp.personal_id
                join formas_pago fp on fp.id = l.forma_pago_id
-               where l.personal_id = $1
+               where lp.personal_id = $1
                order by l.creado_en desc, l.id desc
                limit $2 offset $3`,
               [personal.id, relatedLimit, currentLavadosOffset]
@@ -3231,7 +3712,7 @@ function crudRoutes(pathName, table, fields, title) {
     }
   });
 
-  app.post(`/${pathName}`, requireAuth, uploadMiddleware, async (req, res, next) => {
+  app.post(`/${pathName}`, ...mutationMiddleware, uploadMiddleware, async (req, res, next) => {
     try {
       const entries = crudValues(fields, req, false);
       const names = entries.map((entry) => entry.name);
@@ -3249,7 +3730,7 @@ function crudRoutes(pathName, table, fields, title) {
     }
   });
 
-  app.post(`/${pathName}/:id`, requireAuth, uploadMiddleware, async (req, res, next) => {
+  app.post(`/${pathName}/:id`, ...mutationMiddleware, uploadMiddleware, async (req, res, next) => {
     try {
       const entries = crudValues(fields, req, true);
       const names = entries.map((entry) => entry.name);
@@ -3264,7 +3745,7 @@ function crudRoutes(pathName, table, fields, title) {
     }
   });
 
-  app.post(`/${pathName}/:id/toggle`, requireAuth, async (req, res, next) => {
+  app.post(`/${pathName}/:id/toggle`, ...mutationMiddleware, async (req, res, next) => {
     try {
       await query(`update ${table} set activo = not activo where id = $1`, [req.params.id]);
       setFlash(req, "success", "Estado actualizado.");
@@ -3298,7 +3779,7 @@ crudRoutes("servicio-grupos", "servicio_grupo", [
   { name: "nombre", label: "Nombre", required: true },
   { name: "imagen", label: "Imagen PNG", type: "image" },
   { name: "activo", label: "Activo", type: "checkbox" }
-], "Grupos de servicios");
+], "Grupos de servicios", { item: "servicio", event: "servicio-bloqueo" });
 
 crudRoutes("clientes", "clientes", [
   { name: "chapa", label: "Chapa", required: true, uppercase: true },
@@ -3317,7 +3798,7 @@ crudRoutes("servicios", "servicios", [
   { name: "nombre", label: "Nombre", required: true },
   { name: "precio_base", label: "Precio base", type: "money", required: true },
   { name: "activo", label: "Activo", type: "checkbox" }
-], "Servicios");
+], "Servicios", { item: "servicio", event: "servicio-bloqueo" });
 
 crudRoutes("personal", "personal", [
   { name: "nombre", label: "Nombre", required: true },

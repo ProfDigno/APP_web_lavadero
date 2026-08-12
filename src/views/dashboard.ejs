@@ -58,7 +58,10 @@
     <div class="list">
       <% ultimos.forEach((lavado) => { %>
         <a class="row-link" href="/lavados/<%= lavado.id %>">
-          <strong>#<%= lavado.id %> - <%= lavado.chapa %></strong>
+          <strong>#<%= lavado.id %> - <%= lavado.chapa %><%= lavado.marca_modelo ? ' - ' + lavado.marca_modelo : '' %></strong>
+          <% if (lavado.creado_en) { %>
+            <span><%= formatDateTimeShort(lavado.creado_en) %></span>
+          <% } %>
           <span><%= lavado.personal_nombre %> · <%= lavado.estado %> · <%= formatMoney(lavado.total) %></span>
           <%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %>
         </a>

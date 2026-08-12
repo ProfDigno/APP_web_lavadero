@@ -2,6 +2,7 @@
 <% const modalCrud = ['clientes', 'servicios', 'servicio-grupos', 'personal', 'grupo-clientes', 'formas-pago', 'gasto-tipos'].includes(pathName); %>
 <% const entityLabel = pathName === 'clientes' ? 'cliente' : (pathName === 'servicios' ? 'servicio' : (pathName === 'servicio-grupos' ? 'grupo de servicio' : (pathName === 'personal' ? 'personal' : (pathName === 'grupo-clientes' ? 'grupo de cliente' : (pathName === 'formas-pago' ? 'forma de pago' : (pathName === 'gasto-tipos' ? 'tipo de gasto' : 'registro')))))); %>
 <% const newEntityLabel = pathName === 'formas-pago' ? 'Nueva forma de pago' : 'Nuevo ' + entityLabel; %>
+<% const canMutate = !['servicios', 'servicio-grupos'].includes(pathName) || canEvent('servicio-bloqueo'); %>
 <% const tableFields = pathName === 'clientes'
   ? ['chapa', 'marca_modelo', 'nombre', 'ruc', 'email', 'grupo_cliente_id'].map((name) => fields.find((field) => field.name === name)).filter(Boolean)
   : pathName === 'grupo-clientes'
@@ -19,13 +20,13 @@
     <h1><%= title %></h1>
     <p><%= editItem ? 'Editando registro' : 'Alta y mantenimiento' %></p>
   </div>
-  <% if (modalCrud) { %>
+  <% if (modalCrud && canMutate) { %>
     <button type="button" data-open-crud-modal><%= newEntityLabel %></button>
   <% } %>
 </div>
 
 <section class="grid <%= modalCrud ? 'one' : 'two crud-layout' %>">
-  <% if (!modalCrud) { %>
+  <% if (!modalCrud && canMutate) { %>
     <form class="panel stack crud-form-panel" method="post" action="/<%= pathName %><%= editItem ? '/' + editItem.id : '' %>" <%= fields.some((field) => field.type === 'image') ? 'enctype="multipart/form-data"' : '' %>>
     <% fields.forEach((field) => { %>
       <% if (field.type === 'checkbox') { %>
@@ -163,7 +164,7 @@
             <% }) %>
             <% if (!modalCrud) { %><td><%= item.activo ? 'Activo' : 'Inactivo' %></td><% } %>
             <td class="cell-actions">
-              <% if (modalCrud) { %>
+              <% if (canMutate && modalCrud) { %>
                 <a class="icon-button" href="/<%= pathName %>?edit=<%= item.id %><%= meta.isPaged ? '&offset=' + meta.offset + pageQuery : '' %>" aria-label="Editar" title="Editar">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M4 20h4l10.5-10.5-4-4L4 16v4z"></path>
@@ -176,7 +177,7 @@
                     <span></span>
                   </label>
                 </form>
-              <% } else { %>
+              <% } else if (canMutate) { %>
                 <a href="/<%= pathName %>?edit=<%= item.id %>">Editar</a>
                 <form action="/<%= pathName %>/<%= item.id %>/toggle" method="post">
                   <button class="link" type="submit"><%= item.activo ? 'Desactivar' : 'Activar' %></button>
@@ -464,7 +465,7 @@
   </div>
 </section>
 
-<% if (modalCrud) { %>
+<% if (modalCrud && canMutate) { %>
   <div class="modal-backdrop <%= editItem ? '' : 'is-hidden' %>" data-crud-modal>
     <form
       class="modal-panel crud-modal-panel stack"
