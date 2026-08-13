@@ -1,4 +1,43 @@
 (function () {
+  const navToggle = document.querySelector(".nav-toggle");
+  const mainNavigation = document.querySelector("#main-navigation");
+
+  if (navToggle && mainNavigation) {
+    const desktopQuery = window.matchMedia("(min-width: 1000px)");
+
+    function closeNavigation() {
+      mainNavigation.classList.remove("is-open");
+      navToggle.setAttribute("aria-expanded", "false");
+      navToggle.setAttribute("aria-label", "Abrir menú de navegación");
+    }
+
+    function toggleNavigation() {
+      const isOpen = navToggle.getAttribute("aria-expanded") === "true";
+      navToggle.setAttribute("aria-expanded", String(!isOpen));
+      navToggle.setAttribute("aria-label", isOpen ? "Abrir menú de navegación" : "Cerrar menú de navegación");
+      mainNavigation.classList.toggle("is-open", !isOpen);
+    }
+
+    navToggle.addEventListener("click", toggleNavigation);
+    mainNavigation.querySelectorAll("a").forEach((link) => link.addEventListener("click", closeNavigation));
+
+    document.addEventListener("click", (event) => {
+      if (navToggle.getAttribute("aria-expanded") !== "true") return;
+      if (!mainNavigation.contains(event.target) && !navToggle.contains(event.target)) closeNavigation();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && navToggle.getAttribute("aria-expanded") === "true") {
+        closeNavigation();
+        navToggle.focus();
+      }
+    });
+
+    desktopQuery.addEventListener("change", (event) => {
+      if (event.matches) closeNavigation();
+    });
+  }
+
   const clientSelect = document.querySelector("[data-client-select]");
   const quickClient = document.querySelector("[data-quick-client]");
   const clientSearch = document.querySelector("[data-client-search]");

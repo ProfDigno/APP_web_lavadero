@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= title %> - LAVADERO A1</title>
-  <link rel="stylesheet" href="/css/styles.css?v=20260812-1">
+  <link rel="stylesheet" href="/css/styles.css?v=20260813-2">
 </head>
 <body class="<%= user ? 'app-page' : 'auth-page' %>">
   <% if (user) { %>
@@ -15,18 +15,22 @@
         <button class="ghost" type="submit">Salir</button>
       </form>
     </header>
-    <nav class="nav">
-      <a href="/">Inicio</a>
+    <button class="nav-toggle" type="button" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="main-navigation">
+      <span class="nav-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class="nav-toggle-label">Menú</span>
+    </button>
+    <nav class="nav" id="main-navigation" aria-label="Navegación principal">
+      <a href="/"><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V10Z"/><path d="M9 21v-7h6v7"/></svg></span>Inicio</a>
       <details class="nav-menu">
-        <summary>Lavados</summary>
+        <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h18M5 12l1.5-5h11L19 12M6 17h12M7 12v5m10-5v5"/></svg></span>Lavados</summary>
         <div class="nav-submenu">
           <a href="/lavados">Registrar lavado</a>
           <a href="/analisis-lavados">Analisis general</a>
         </div>
       </details>
-      <a href="/caja">Caja</a>
+      <a href="/caja"><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M7 6V4h10v2m-9 7h8"/></svg></span>Caja</a>
       <details class="nav-menu">
-        <summary>Cliente</summary>
+        <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0m3-9a3 3 0 1 0 0-6m0 8a5 5 0 0 1 3 4"/></svg></span>Cliente</summary>
         <div class="nav-submenu">
           <a href="/clientes">Cliente</a>
           <a href="/grupo-clientes">Grupo de cliente</a>
@@ -35,7 +39,7 @@
       </details>
       <% if (canItem('servicio')) { %>
         <details class="nav-menu">
-          <summary>Servicio</summary>
+          <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m14.7 6.3 3-3 3 3-3 3m-1-1L9 16l-4 1 1-4 7.7-7.7"/><path d="m13 5 6 6"/></svg></span>Servicio</summary>
           <div class="nav-submenu">
             <a href="/servicios">Servicios</a>
             <a href="/servicio-grupos">Grupos de servicios</a>
@@ -43,7 +47,7 @@
         </details>
       <% } %>
       <details class="nav-menu">
-        <summary>Personal</summary>
+        <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21a7 7 0 0 1 14 0M19 11a3 3 0 0 1 0 6"/></svg></span>Personal</summary>
         <div class="nav-submenu">
           <a href="/personal">Personal</a>
           <a href="/analisis-personal">Analisis de personal</a>
@@ -52,23 +56,23 @@
         </div>
       </details>
       <details class="nav-menu">
-        <summary>Gasto</summary>
+        <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4zM7 7V5h10v2M8 11h8M8 15h5"/></svg></span>Gasto</summary>
         <div class="nav-submenu">
           <a href="/gasto-tipos">Gasto tipo</a>
           <a href="/gastos">Gasto</a>
         </div>
       </details>
       <details class="nav-menu">
-        <summary>Factura</summary>
+        <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg></span>Factura</summary>
         <div class="nav-submenu">
           <a href="/facturas">Facturas</a>
           <a href="/facturas/nueva">Nueva factura libre</a>
           <a href="/facturasend/config">Configuracion electronica</a>
         </div>
       </details>
-      <a href="/formas-pago">Pagos</a>
+      <a href="/formas-pago"><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span>Pagos</a>
       <details class="nav-menu">
-        <summary>Usuarios</summary>
+        <summary><span class="nav-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2"/><path d="M3 20a6 6 0 0 1 12 0m1-5a5 5 0 0 1 5 5"/></svg></span>Usuarios</summary>
         <div class="nav-submenu">
           <a href="/usuarios">Usuario</a>
           <a href="/usuario-roll">Roll</a>

@@ -1201,9 +1201,11 @@ app.get("/", requireAuth, async (req, res, next) => {
          left join lavado_personal lp on lp.lavado_id = l.id
          left join personal p on p.id = lp.personal_id
          join formas_pago fp on fp.id = l.forma_pago_id
+         where l.creado_en::date = $1
          group by l.id, c.chapa, c.marca_modelo, fp.nombre, fp.icono_ruta, fp.color
          order by l.id desc
-         limit 8`
+         limit 8`,
+        [fecha]
       )
     ]);
     res.render("dashboard", {
