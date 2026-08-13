@@ -1636,12 +1636,15 @@ small,
   }
 
   .table-wrap {
-    overflow-x: visible;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 
   table {
-    min-width: 0;
-    table-layout: fixed;
+    /* Keep columns readable on phones; the wrapper provides horizontal scroll. */
+    min-width: 560px;
+    table-layout: auto;
   }
 
   .caja-table-wrap {
@@ -1732,26 +1735,6 @@ small,
   td {
     padding: 8px 6px;
     font-size: 13px;
-  }
-
-  th:nth-child(1),
-  td:nth-child(1) {
-    width: 42px;
-  }
-
-  th:nth-child(2),
-  td:nth-child(2) {
-    width: 78px;
-  }
-
-  th:nth-child(3),
-  td:nth-child(3) {
-    width: 74px;
-  }
-
-  th:nth-child(4),
-  td:nth-child(4) {
-    width: auto;
   }
 
   .payment-cell {
