@@ -21,6 +21,7 @@
   <article><span>Egresos caja</span><strong><%= formatMoney(caja.resumen.egresos) %></strong></article>
   <article><span>Neto caja</span><strong><%= formatMoney(caja.resumen.neto) %></strong></article>
   <article><span>Efectivo a contar</span><strong><%= formatMoney(caja.resumen.efectivoAContar) %></strong></article>
+  <article><span>Lavados</span><strong><%= resumen.lavados %></strong></article>
 </section>
 
 <section class="metrics">
@@ -57,17 +58,67 @@
     <h2>Ultimos lavados</h2>
     <div class="list">
       <% ultimos.forEach((lavado) => { %>
-        <a class="row-link" href="/lavados/<%= lavado.id %>">
-          <strong>#<%= lavado.id %> - <%= lavado.chapa %><%= lavado.marca_modelo ? ' - ' + lavado.marca_modelo : '' %></strong>
+        <div class="row-link" data-row-link="/lavados/<%= lavado.id %>" tabindex="0" role="link">
+          <a href="/lavados/<%= lavado.id %>"><strong>#<%= lavado.id %> - <%= lavado.chapa %><%= lavado.marca_modelo ? ' - ' + lavado.marca_modelo : '' %></strong></a>
           <% if (lavado.creado_en) { %>
             <span><%= formatDateTimeShort(lavado.creado_en) %></span>
           <% } %>
           <span><%= lavado.personal_nombre %> · <%= lavado.estado %> · <%= formatMoney(lavado.total) %></span>
           <%- include('partials/payment_chip', { nombre: lavado.forma_pago, icono: lavado.forma_pago_icono, color: lavado.forma_pago_color }) %>
-        </a>
+          <% if (lavado.estado !== 'ANULADO' && lavado.estado !== 'CREDITO' && lavado.estado !== 'PAGADO') { %>
+            <div class="payment-actions dashboard-payment-actions" aria-label="Cambiar forma de pago">
+              <% formasPago.forEach((forma) => { %>
+                <form method="post" action="/lavados/<%= lavado.id %>/forma-pago">
+                  <input type="hidden" name="forma_pago_id" value="<%= forma.id %>">
+                  <input type="hidden" name="redirect_to" value="/?fecha=<%= fecha %>">
+                  <button
+                    class="payment-button <%= Number(forma.id) === Number(lavado.forma_pago_id) ? 'is-active' : '' %>"
+                    style="--payment-color: <%= forma.color || '#687385' %>"
+                    title="<%= forma.nombre %>"
+                    aria-label="Cambiar a <%= forma.nombre %>"
+                    data-payment-confirm
+                    data-lavado-id="#<%= lavado.id %>"
+                    data-auto="<%= lavado.chapa %> - <%= lavado.marca_modelo %>"
+                    data-personal="<%= lavado.personal_nombre %>"
+                    data-total="<%= formatMoney(lavado.total) %>"
+                    data-pago-actual="<%= lavado.forma_pago %>"
+                    data-pago-nuevo="<%= forma.nombre %>"
+                    type="submit"
+                    <%= Number(forma.id) === Number(lavado.forma_pago_id) ? 'disabled' : '' %>>
+                    <span>
+                      <% if (forma.icono_ruta && String(forma.icono_ruta).startsWith('/uploads/')) { %>
+                        <img src="<%= forma.icono_ruta %>" alt="">
+                      <% } else { %>
+                        <%= paymentIconLabel(forma.icono_ruta) %>
+                      <% } %>
+                    </span>
+                  </button>
+                </form>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
       <% }) %>
       <% if (!ultimos.length) { %><p class="empty">Todavia no hay lavados.</p><% } %>
     </div>
   </div>
 </section>
+<div class="modal-backdrop is-hidden" data-payment-modal>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+    <h2 id="payment-modal-title">Confirmar forma de pago</h2>
+    <dl class="modal-facts">
+      <dt>Lavado</dt><dd data-modal-lavado></dd>
+      <dt>Auto</dt><dd data-modal-auto></dd>
+      <dt>Personal</dt><dd data-modal-personal></dd>
+      <dt>Total</dt><dd data-modal-total></dd>
+      <dt>Pago actual</dt><dd data-modal-pago-actual></dd>
+      <dt>Nuevo pago</dt><dd data-modal-pago-nuevo></dd>
+    </dl>
+    <p>Desea cambiar la forma de pago?</p>
+    <div class="modal-actions">
+      <button type="button" data-payment-confirm-yes>SI</button>
+      <button type="button" class="secondary" data-payment-confirm-no>NO</button>
+    </div>
+  </div>
+</div>
 <%- include('partials/footer') %>

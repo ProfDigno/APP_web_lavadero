@@ -1361,6 +1361,19 @@ small,
   color: var(--muted);
 }
 
+.row-link > a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-payment-actions {
+  margin-top: 2px;
+}
+
+.row-link .payment-button span {
+  color: var(--payment-color);
+}
+
 .facts {
   display: grid;
   grid-template-columns: 130px 1fr;
@@ -1381,6 +1394,10 @@ small,
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.crud-inline-toggle {
+  margin: 0;
 }
 
 .icon-button {

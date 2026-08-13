@@ -7,6 +7,8 @@
   ? ['chapa', 'marca_modelo', 'nombre', 'ruc', 'email', 'grupo_cliente_id'].map((name) => fields.find((field) => field.name === name)).filter(Boolean)
   : pathName === 'grupo-clientes'
     ? ['nombre', 'razon_social', 'ruc', 'telefono', 'es_credito'].map((name) => fields.find((field) => field.name === name)).filter(Boolean)
+  : pathName === 'formas-pago'
+    ? ['nombre', 'icono_ruta', 'color', 'mostrar_despues_crear'].map((name) => fields.find((field) => field.name === name)).filter(Boolean)
   : fields.slice(0, 3); %>
 <% const tableColspan = tableFields.length + (modalCrud ? 2 : 3); %>
 <% const meta = listMeta || { q: '', limit: null, offset: 0, total: items.length, isPaged: false }; %>
@@ -122,7 +124,7 @@
       <thead>
         <tr>
           <th>ID</th>
-          <% tableFields.forEach((field) => { %><th><%= field.label %></th><% }) %>
+          <% tableFields.forEach((field) => { %><th><%= pathName === 'formas-pago' && field.name === 'mostrar_despues_crear' ? 'Mostrar' : field.label %></th><% }) %>
           <% if (!modalCrud) { %><th>Estado</th><% } %>
           <th></th>
         </tr>
@@ -145,7 +147,18 @@
             <td><%= item.id %></td>
             <% tableFields.forEach((field) => { %>
               <td class="<%= field.type === 'money' ? 'money-cell' : '' %>">
-                <% if (field.type === 'checkbox') { %>
+                <% if (pathName === 'formas-pago' && field.name === 'mostrar_despues_crear') { %>
+                  <form class="crud-inline-toggle" action="/formas-pago/<%= item.id %>/toggle-mostrar" method="post">
+                    <label class="toggle-check" title="<%= item[field.name] ? 'Ocultar' : 'Mostrar' %>">
+                      <input
+                        type="checkbox"
+                        aria-label="<%= item[field.name] ? 'Ocultar' : 'Mostrar' %> <%= item.nombre %>"
+                        <%= item[field.name] ? 'checked' : '' %>
+                        onchange="this.form.submit()">
+                      <span></span>
+                    </label>
+                  </form>
+                <% } else if (field.type === 'checkbox') { %>
                   <%= item[field.name] ? 'Si' : 'No' %>
                 <% } else if (field.type === 'image') { %>
                   <% const tableImageValue = item[field.name] ? String(item[field.name]) : ''; %>

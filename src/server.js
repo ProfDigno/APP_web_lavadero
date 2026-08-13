@@ -1169,10 +1169,11 @@ app.post("/logout", (req, res) => {
 app.get("/", requireAuth, async (req, res, next) => {
   try {
     const fecha = req.query.fecha || todayIso();
-    const [caja, resumen, comisiones, ultimos] = await Promise.all([
+    const [caja, resumen, comisiones, ultimos, formasPago] = await Promise.all([
       getCajaDia(fecha),
       query(
         `select
+          count(*) filter (where estado <> 'ANULADO') as lavados,
           count(*) filter (where estado = 'EMITIDO') as emitidos,
           count(*) filter (where estado = 'PAGADO') as pagados,
           count(*) filter (where estado = 'ANULADO') as anulados,
@@ -1202,10 +1203,19 @@ app.get("/", requireAuth, async (req, res, next) => {
          left join personal p on p.id = lp.personal_id
          join formas_pago fp on fp.id = l.forma_pago_id
          where l.creado_en::date = $1
+           and fp.nombre = 'LAVADO'
          group by l.id, c.chapa, c.marca_modelo, fp.nombre, fp.icono_ruta, fp.color
          order by l.id desc
          limit 8`,
         [fecha]
+      ),
+      query(
+        `select *
+         from formas_pago
+         where activo = true
+           and mostrar_despues_crear = true
+           and nombre <> 'ANULADO'
+         order by ${formasPagoOrderSql()}`
       )
     ]);
     res.render("dashboard", {
@@ -1214,7 +1224,8 @@ app.get("/", requireAuth, async (req, res, next) => {
       caja,
       resumen: resumen.rows[0],
       comisiones: comisiones.rows,
-      ultimos: ultimos.rows
+      ultimos: ultimos.rows,
+      formasPago: formasPago.rows
     });
   } catch (error) {
     next(error);
@@ -3756,6 +3767,23 @@ function crudRoutes(pathName, table, fields, title, authorization = {}) {
       next(error);
     }
   });
+
+  if (pathName === "formas-pago") {
+    app.post(`/${pathName}/:id/toggle-mostrar`, ...mutationMiddleware, async (req, res, next) => {
+      try {
+        await query(
+          `update ${table}
+           set mostrar_despues_crear = not mostrar_despues_crear
+           where id = $1`,
+          [req.params.id]
+        );
+        setFlash(req, "success", "Configuracion de mostrar actualizada.");
+        res.redirect(`/${pathName}`);
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
 }
 
 function fieldValue(value, field) {

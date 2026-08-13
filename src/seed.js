@@ -34,8 +34,7 @@ async function seed() {
       await client.query(
         `insert into formas_pago (nombre, icono_ruta, color, mostrar_despues_crear, activo, creado_por)
          values ($1, $2, $3, $4, true, $5)
-         on conflict (nombre) do update set
-           mostrar_despues_crear = excluded.mostrar_despues_crear`,
+         on conflict (nombre) do nothing`,
         [forma.nombre, forma.icono, forma.color, forma.mostrar !== false, config.admin.name]
       );
     }
