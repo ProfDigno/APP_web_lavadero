@@ -1206,7 +1206,7 @@ app.get("/", requireAuth, async (req, res, next) => {
            and fp.nombre = 'LAVADO'
          group by l.id, c.chapa, c.marca_modelo, fp.nombre, fp.icono_ruta, fp.color
          order by l.id desc
-         limit 8`,
+         limit 100`,
         [fecha]
       ),
       query(
