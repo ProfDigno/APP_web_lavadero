@@ -1,6 +1,7 @@
 node_modules/
 .env
 servidor.txt
+servidor_ssh.txt
 server.log
 server-error.log
 server.err.log
