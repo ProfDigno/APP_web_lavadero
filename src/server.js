@@ -361,6 +361,20 @@ function safeDownloadName(value) {
     .replace(/^-+|-+$/g, "") || "reporte";
 }
 
+function safeCreditExcelName(value) {
+  return String(value || "SIN CLIENTE")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "SIN CLIENTE";
+}
+
+function fileDateTime(value = new Date()) {
+  const parts = dateParts(value);
+  if (!parts) return "";
+  const seconds = padDatePart(new Date(value).getSeconds());
+  return `${parts.year}-${padDatePart(parts.month)}-${padDatePart(parts.day)}_${padDatePart(parts.hour)}-${padDatePart(parts.minute)}-${seconds}`;
+}
+
 function encryptionKey() {
   if (!config.sessionSecret || config.sessionSecret.length < 8) {
     throw new Error("Configure SESSION_SECRET para guardar credenciales.");
@@ -1206,7 +1220,7 @@ app.get("/", requireAuth, async (req, res, next) => {
            and fp.nombre = 'LAVADO'
          group by l.id, c.chapa, c.marca_modelo, fp.nombre, fp.icono_ruta, fp.color
          order by l.id desc
-         limit 8`,
+         limit 100`,
         [fecha]
       ),
       query(
@@ -2274,201 +2288,96 @@ app.get("/grupo-creditos/:id/excel", requireAuth, async (req, res, next) => {
     const detail = await getGrupoCreditoDetail(req.params.id);
     if (!detail) return res.status(404).render("error", { title: "No encontrado", message: "Credito de grupo no encontrado." });
     const { credito, lavados } = detail;
+    const generatedAt = new Date();
+    const totalLavados = lavados.reduce((sum, lavado) => sum + Number(lavado.total || 0), 0);
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Lavadero";
-    workbook.created = new Date();
-    const sheet = workbook.addWorksheet("Credito grupo");
+    workbook.created = generatedAt;
+    const sheet = workbook.addWorksheet("tb_imprimir_cliente_grupo");
 
     sheet.columns = [
-      { key: "lavado", width: 9 },
-      { key: "fecha", width: 19 },
-      { key: "auto", width: 32 },
-      { key: "personal", width: 20 },
-      { key: "servicios", width: 46 },
-      { key: "total", width: 16 }
+      { key: "fecha_creado", width: 16.54 },
+      { key: "vehiculo", width: 21.66 },
+      { key: "chapa", width: 13.86 },
+      { key: "servicio", width: 55.55 },
+      { key: "monto", width: 15.33 }
     ];
 
-    sheet.views = [{ showGridLines: false }];
+    sheet.views = [{ showGridLines: true }];
     sheet.pageSetup = {
-      orientation: "landscape",
-      fitToPage: true,
+      orientation: "portrait",
+      fitToPage: false,
       fitToWidth: 1,
-      fitToHeight: 0,
-      margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.2, footer: 0.2 }
+      fitToHeight: 1,
+      margins: { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 }
     };
 
-    sheet.mergeCells("A1:F3");
-    const titleCell = sheet.getCell("A1");
-    titleCell.value = "Formulario de credito por grupo";
-    titleCell.font = { bold: true, size: 18, color: { argb: "FFFFFFFF" } };
-    titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF12343B" } };
-    titleCell.alignment = { vertical: "middle", horizontal: "left" };
-    titleCell.border = {
-      top: { style: "thin", color: { argb: "FF12343B" } },
-      left: { style: "thin", color: { argb: "FF12343B" } },
-      bottom: { style: "thin", color: { argb: "FF12343B" } },
-      right: { style: "thin", color: { argb: "FF12343B" } }
-    };
-    sheet.getRow(1).height = 24;
-    sheet.getRow(2).height = 20;
-    sheet.getRow(3).height = 20;
+    sheet.getRow(1).values = ["FECHA ", "CLIENTE", null, null, "TOTAL"];
+    sheet.getRow(2).values = [generatedAt, credito.grupo_nombre, null, null, totalLavados];
+    sheet.getRow(3).values = ["fecha_creado", "Vehiculo", "Chapa", "Servicio", "MONTO"];
+    sheet.mergeCells("B1:D1");
+    sheet.mergeCells("B2:D2");
+    sheet.getRow(1).height = 23.25;
+    sheet.getRow(2).height = 23.25;
 
-    sheet.mergeCells("A4:D4");
-    sheet.getCell("A4").value = `Cuenta #${credito.id} - generado ${formatDateTime(new Date())}`;
-    sheet.getCell("A4").font = { size: 9, color: { argb: "FF687385" } };
-    sheet.getCell("A4").alignment = { vertical: "middle", horizontal: "left" };
-
-    sheet.mergeCells("E4:F4");
-    const estadoCell = sheet.getCell("E4");
-    estadoCell.value = credito.estado;
-    estadoCell.font = {
-      bold: true,
-      size: 11,
-      color: { argb: credito.estado === "ABIERTO" ? "FFB42318" : "FF075985" }
-    };
-    estadoCell.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: credito.estado === "ABIERTO" ? "FFFFF1EF" : "FFE8F3FF" }
-    };
-    estadoCell.alignment = { vertical: "middle", horizontal: "center" };
-    estadoCell.border = {
-      top: { style: "thin", color: { argb: "FFDCE1E8" } },
-      left: { style: "thin", color: { argb: "FFDCE1E8" } },
-      bottom: { style: "thin", color: { argb: "FFDCE1E8" } },
-      right: { style: "thin", color: { argb: "FFDCE1E8" } }
+    const thinBorder = {
+      top: { style: "thin", color: { indexed: 64 } },
+      left: { style: "thin", color: { indexed: 64 } },
+      bottom: { style: "thin", color: { indexed: 64 } },
+      right: { style: "thin", color: { indexed: 64 } }
     };
 
-    const cards = [
-      ["Grupo", credito.grupo_nombre, "FF17202A"],
-      ["Inicio", formatDate(credito.fecha_inicio), "FF17202A"],
-      ["Fin", credito.fecha_fin ? formatDate(credito.fecha_fin) : "Abierto", "FF17202A"],
-      ["Lavados", credito.lavados_count, "FF17202A"],
-      ["Total", Number(credito.total || 0), "FF0F766E"],
-      ["Pago", credito.forma_pago || "Pendiente", credito.forma_pago ? "FF17202A" : "FFB42318"]
-    ];
-    cards.forEach(([label, value, color], index) => {
-      const col = (index % 3) * 2 + 1;
-      const row = index < 3 ? 6 : 9;
-      const labelCell = sheet.getCell(row, col);
-      const valueCell = sheet.getCell(row + 1, col);
-      sheet.mergeCells(row, col, row, col + 1);
-      sheet.mergeCells(row + 1, col, row + 1, col + 1);
-      labelCell.value = String(label).toUpperCase();
-      labelCell.font = { bold: true, size: 8, color: { argb: "FF687385" } };
-      labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF6F7F9" } };
-      labelCell.alignment = { vertical: "bottom", horizontal: "left" };
-      valueCell.value = value;
-      valueCell.font = { bold: true, size: 11, color: { argb: color } };
-      valueCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF6F7F9" } };
-      valueCell.alignment = { vertical: "top", horizontal: index === 4 ? "right" : "left" };
-      if (index === 4) valueCell.numFmt = '"Gs." #,##0';
-      [labelCell, valueCell].forEach((cell) => {
-        cell.border = {
-          top: { style: "thin", color: { argb: "FFDCE1E8" } },
-          left: { style: "thin", color: { argb: "FFDCE1E8" } },
-          bottom: { style: "thin", color: { argb: "FFDCE1E8" } },
-          right: { style: "thin", color: { argb: "FFDCE1E8" } }
-        };
-      });
+    ["A1", "B1", "C1", "D1", "E1"].forEach((ref) => {
+      const cell = sheet.getCell(ref);
+      cell.font = { bold: true, size: ref === "A1" ? 11 : 18, name: "Calibri" };
+      cell.border = thinBorder;
+      if (["B1", "C1", "D1"].includes(ref)) cell.alignment = { horizontal: "center" };
     });
 
-    if (credito.pagado_por || credito.pagado_en) {
-      sheet.mergeCells("A12:F12");
-      const paidCell = sheet.getCell("A12");
-      paidCell.value = `Pagado por: ${credito.pagado_por || ""}${credito.pagado_en ? ` - ${formatDateTime(credito.pagado_en)}` : ""}`;
-      paidCell.font = { size: 9, color: { argb: "FF687385" } };
-    }
+    ["A2", "B2", "C2", "D2", "E2"].forEach((ref) => {
+      const cell = sheet.getCell(ref);
+      cell.font = { bold: ref === "E2", size: ref === "E2" ? 14 : (ref === "A2" ? 11 : 18), name: "Calibri", color: { theme: 4, tint: -0.249977111117893 } };
+      cell.border = thinBorder;
+      if (["B2", "C2", "D2"].includes(ref)) cell.alignment = { horizontal: "center" };
+      if (ref === "A2") cell.numFmt = "dd-mm-yyyy hh:mm";
+      if (ref === "E2") cell.numFmt = "#,##0";
+    });
 
-    sheet.mergeCells("A14:F14");
-    sheet.getCell("A14").value = "Lavados realizados";
-    sheet.getCell("A14").font = { bold: true, size: 12, color: { argb: "FF17202A" } };
-
-    const headerRow = sheet.getRow(15);
-    headerRow.values = ["#", "Fecha", "Auto", "Personal", "Servicios", "Total"];
-    headerRow.height = 22;
+    const headerRow = sheet.getRow(3);
     headerRow.eachCell((cell) => {
-      cell.font = { bold: true, size: 9, color: { argb: "FF115E59" } };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F3F1" } };
-      cell.alignment = { vertical: "middle", horizontal: cell.col === 6 ? "right" : "left" };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFB7D4CF" } },
-        left: { style: "thin", color: { argb: "FFB7D4CF" } },
-        bottom: { style: "thin", color: { argb: "FFB7D4CF" } },
-        right: { style: "thin", color: { argb: "FFB7D4CF" } }
-      };
+      cell.font = { bold: true, size: cell.col <= 2 ? 9 : 11, name: cell.col <= 2 ? "Arial" : "Calibri", color: { argb: "FF000000" } };
+      cell.border = thinBorder;
     });
 
-    let rowNumber = 16;
-    lavados.forEach((lavado, index) => {
+    let rowNumber = 4;
+    lavados.forEach((lavado) => {
       const row = sheet.getRow(rowNumber++);
       row.values = [
-        `#${lavado.id}`,
-        formatDateTime(lavado.creado_en),
-        `${lavado.chapa || ""}${lavado.marca_modelo ? ` - ${lavado.marca_modelo}` : ""}`.trim(),
-        lavado.personal_nombre || "",
+        formatDate(lavado.creado_en),
+        lavado.marca_modelo || "",
+        lavado.chapa || "",
         lavado.servicios || "",
         Number(lavado.total || 0)
       ];
-      row.height = 28;
       row.eachCell((cell) => {
-        cell.font = { size: 9, color: { argb: "FF17202A" } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: index % 2 === 0 ? "FFFFFFFF" : "FFF8FAFB" } };
-        cell.alignment = { vertical: "top", horizontal: cell.col === 6 ? "right" : "left", wrapText: true };
-        cell.border = {
-          top: { style: "thin", color: { argb: "FFDCE1E8" } },
-          left: { style: "thin", color: { argb: "FFDCE1E8" } },
-          bottom: { style: "thin", color: { argb: "FFDCE1E8" } },
-          right: { style: "thin", color: { argb: "FFDCE1E8" } }
-        };
-        if (cell.col === 6) cell.numFmt = '"Gs." #,##0';
+        cell.font = { size: 11, name: "Calibri" };
+        cell.border = thinBorder;
+        if (cell.col === 5) cell.numFmt = "#,##0";
       });
     });
+
     if (!lavados.length) {
-      sheet.mergeCells(`A${rowNumber}:F${rowNumber}`);
+      sheet.mergeCells(`A${rowNumber}:E${rowNumber}`);
       const emptyCell = sheet.getCell(`A${rowNumber}`);
       emptyCell.value = "Sin lavados en esta cuenta.";
-      emptyCell.font = { size: 9, color: { argb: "FF687385" } };
+      emptyCell.font = { size: 11, name: "Calibri" };
       emptyCell.alignment = { vertical: "middle", horizontal: "left" };
-      emptyCell.border = {
-        top: { style: "thin", color: { argb: "FFDCE1E8" } },
-        left: { style: "thin", color: { argb: "FFDCE1E8" } },
-        bottom: { style: "thin", color: { argb: "FFDCE1E8" } },
-        right: { style: "thin", color: { argb: "FFDCE1E8" } }
-      };
+      emptyCell.border = thinBorder;
+      for (let col = 2; col <= 5; col++) sheet.getCell(rowNumber, col).border = thinBorder;
       rowNumber++;
     }
 
-    rowNumber += 1;
-    sheet.mergeCells(rowNumber, 4, rowNumber, 5);
-    const totalLabelCell = sheet.getCell(rowNumber, 4);
-    const totalValueCell = sheet.getCell(rowNumber, 6);
-    totalLabelCell.value = "Total general";
-    totalValueCell.value = Number(credito.total || 0);
-    [totalLabelCell, totalValueCell].forEach((cell) => {
-      cell.font = { bold: true, size: 11, color: { argb: "FF115E59" } };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F3F1" } };
-      cell.alignment = { vertical: "middle", horizontal: cell.col === 6 ? "right" : "left" };
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFB7D4CF" } },
-        left: { style: "thin", color: { argb: "FFB7D4CF" } },
-        bottom: { style: "thin", color: { argb: "FFB7D4CF" } },
-        right: { style: "thin", color: { argb: "FFB7D4CF" } }
-      };
-    });
-    totalValueCell.numFmt = '"Gs." #,##0';
-
-    rowNumber += 2;
-    sheet.mergeCells(rowNumber, 1, rowNumber, 3);
-    sheet.getCell(rowNumber, 1).value = "Firma / aclaracion:";
-    sheet.getCell(rowNumber, 1).font = { size: 9, color: { argb: "FF687385" } };
-    sheet.mergeCells(rowNumber, 5, rowNumber, 6);
-    sheet.getCell(rowNumber, 5).value = `Lavadero - credito por grupo #${credito.id}`;
-    sheet.getCell(rowNumber, 5).font = { size: 8, color: { argb: "FF687385" } };
-    sheet.getCell(rowNumber, 5).alignment = { horizontal: "right" };
-    sheet.getColumn("total").numFmt = '"Gs." #,##0';
-
-    const filename = `credito-${safeDownloadName(credito.grupo_nombre)}-${credito.id}.xlsx`;
+    const filename = `Credito_${safeCreditExcelName(credito.grupo_nombre)}_${fileDateTime(generatedAt)}.xlsx`;
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     await workbook.xlsx.write(res);
