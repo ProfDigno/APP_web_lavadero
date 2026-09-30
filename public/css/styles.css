@@ -441,6 +441,39 @@ h3 {
   grid-template-columns: 1fr;
 }
 
+.invoice-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.invoice-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.invoice-summary-card span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.invoice-summary-card strong {
+  color: var(--primary-dark);
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.factura-pagination {
+  justify-content: center;
+}
+
 .crud-list-panel {
   display: grid;
   gap: 10px;
@@ -1718,7 +1751,8 @@ small,
   .analysis-filter,
   .analysis-dashboard-grid,
   .totals,
-  .invoice-item-line {
+  .invoice-item-line,
+  .invoice-summary-grid {
     grid-template-columns: 1fr;
   }
 

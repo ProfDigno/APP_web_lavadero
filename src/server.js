@@ -1742,21 +1742,71 @@ app.get("/facturas/:id/electronica/kude", requireAuth, async (req, res, next) =>
 
 app.get("/facturas", requireAuth, async (req, res, next) => {
   try {
-    const fecha = req.query.fecha || "";
-    const params = [];
-    const where = fecha ? "where f.fecha_emision = $1" : "";
-    if (fecha) params.push(fecha);
-    const facturas = await query(
-      `select f.*, c.chapa, c.marca_modelo
-       from facturas f
-       left join clientes c on c.id = f.cliente_id
-       ${where}
-       order by f.fecha_emision desc, f.id desc
-       limit 200`,
-      params
-    );
-    const configRow = await getFacturaSendConfig();
-    res.render("facturas/index", { title: "Facturas", facturas: facturas.rows, fecha, hasFacturaSendConfig: Boolean(configRow) });
+    const fechaDesde = String(req.query.fecha_desde || "").trim();
+    const fechaHasta = String(req.query.fecha_hasta || "").trim();
+    const rawOffset = Number(req.query.offset || 0);
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
+    const pageLimit = 50;
+    const validDate = (value) => {
+      if (!value) return true;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const [year, month, day] = value.split("-").map(Number);
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+    };
+    const rangoInvalido = !validDate(fechaDesde) || !validDate(fechaHasta) || (fechaDesde && fechaHasta && fechaDesde > fechaHasta);
+    const filters = [];
+    const filterParams = [];
+    if (fechaDesde) {
+      filterParams.push(fechaDesde);
+      filters.push(`f.fecha_emision >= $${filterParams.length}`);
+    }
+    if (fechaHasta) {
+      filterParams.push(fechaHasta);
+      filters.push(`f.fecha_emision <= $${filterParams.length}`);
+    }
+    const where = filters.length ? `where ${filters.join(" and ")}` : "";
+    const emptySummary = { total: 0, total_facturas: 0, iva_10: 0 };
+    const [facturas, summaryResult, configRow] = rangoInvalido
+      ? [{ rows: [] }, { rows: [emptySummary] }, getFacturaSendConfig()]
+      : await Promise.all([
+          query(
+            `select f.*, c.chapa, c.marca_modelo
+             from facturas f
+             left join clientes c on c.id = f.cliente_id
+             ${where}
+             order by f.fecha_emision desc, f.id desc
+             limit $${filterParams.length + 1} offset $${filterParams.length + 2}`,
+            [...filterParams, pageLimit, offset]
+          ),
+          query(
+            `select count(*)::int as total_facturas,
+                    coalesce(sum(f.total), 0) as total,
+                    coalesce(sum(f.iva_10), 0) as iva_10
+             from facturas f
+             ${where}`,
+            filterParams
+          ),
+          getFacturaSendConfig()
+        ]);
+    const summary = summaryResult.rows[0] || emptySummary;
+    const totalFacturas = Number(summary.total_facturas || 0);
+    const safeOffset = rangoInvalido || !totalFacturas
+      ? 0
+      : Math.min(offset, Math.floor((totalFacturas - 1) / pageLimit) * pageLimit);
+    res.render("facturas/index", {
+      title: "Facturas",
+      facturas: facturas.rows,
+      fechaDesde,
+      fechaHasta,
+      offset: safeOffset,
+      pageLimit,
+      totalFacturas,
+      totalFacturado: summary.total || 0,
+      totalIva: summary.iva_10 || 0,
+      rangoInvalido,
+      hasFacturaSendConfig: Boolean(configRow)
+    });
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,9 @@
 <%- include('../partials/header') %>
+<% const filterQuery = (fechaDesde ? '&fecha_desde=' + encodeURIComponent(fechaDesde) : '') + (fechaHasta ? '&fecha_hasta=' + encodeURIComponent(fechaHasta) : ''); %>
+<% const pageFrom = totalFacturas && facturas.length ? offset + 1 : 0; %>
+<% const pageTo = offset + facturas.length; %>
+<% const previousOffset = Math.max(0, offset - pageLimit); %>
+<% const nextOffset = offset + pageLimit; %>
 <div class="page-head">
   <div>
     <h1>Facturas</h1>
@@ -12,12 +17,31 @@
 
 <form class="toolbar" method="get" action="/facturas">
   <label>
-    Fecha
-    <input type="date" name="fecha" value="<%= fecha %>">
+    Fecha desde
+    <input type="date" name="fecha_desde" value="<%= fechaDesde %>">
+  </label>
+  <label>
+    Fecha hasta
+    <input type="date" name="fecha_hasta" value="<%= fechaHasta %>">
   </label>
   <button type="submit">Ver</button>
-  <% if (fecha) { %><a class="button secondary" href="/facturas">Todas</a><% } %>
+  <% if (fechaDesde || fechaHasta) { %><a class="button secondary" href="/facturas">Todas</a><% } %>
 </form>
+
+<% if (rangoInvalido) { %>
+  <div class="flash error">El rango de fechas no es válido. Verifique las fechas ingresadas.</div>
+<% } %>
+
+<section class="invoice-summary-grid">
+  <article class="invoice-summary-card">
+    <span>Total facturado</span>
+    <strong><%= formatMoney(totalFacturado) %></strong>
+  </article>
+  <article class="invoice-summary-card">
+    <span>IVA 10%</span>
+    <strong><%= formatMoney(totalIva) %></strong>
+  </article>
+</section>
 
 <section class="grid one">
   <div class="table-wrap factura-table-wrap">
@@ -78,5 +102,12 @@
       </tbody>
     </table>
   </div>
+  <% if (totalFacturas > pageLimit) { %>
+    <div class="pagination-bar factura-pagination">
+      <a class="button secondary <%= offset <= 0 ? 'is-disabled' : '' %>" href="<%= offset <= 0 ? '#' : '/facturas?offset=' + previousOffset + filterQuery %>">Anterior</a>
+      <span><%= pageFrom %>-<%= pageTo %> de <%= totalFacturas %></span>
+      <a class="button secondary <%= nextOffset >= totalFacturas ? 'is-disabled' : '' %>" href="<%= nextOffset >= totalFacturas ? '#' : '/facturas?offset=' + nextOffset + filterQuery %>">Siguiente</a>
+    </div>
+  <% } %>
 </section>
 <%- include('../partials/footer') %>
