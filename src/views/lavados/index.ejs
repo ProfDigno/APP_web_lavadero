@@ -19,7 +19,7 @@
         <input type="search" data-client-search name="cliente_busqueda" value="<%= formData.cliente_busqueda || '' %>" placeholder="Chapa, marca/modelo o nombre">
       </label>
       <div class="client-search-results is-hidden" data-client-results></div>
-      <label>
+      <label class="is-hidden" aria-hidden="true">
         Cliente seleccionado
         <select name="cliente_id" data-client-select>
           <option value="">Crear cliente rapido</option>
@@ -42,18 +42,6 @@
           <% }) %>
         </select>
       </label>
-      <div class="choice-group">
-        <span class="choice-label">Personal</span>
-        <% const selectedPersonalIds = Array.isArray(formData.personal_id) ? formData.personal_id.map(String) : (formData.personal_id ? [String(formData.personal_id)] : []); %>
-        <div data-personal-inputs>
-          <% selectedPersonalIds.forEach((personalId) => { %><input type="hidden" name="personal_id" value="<%= personalId %>"><% }) %>
-        </div>
-        <div class="choice-buttons" data-personal-buttons>
-          <% personal.forEach((persona) => { %>
-            <button type="button" class="choice-button <%= selectedPersonalIds.includes(String(persona.id)) ? 'is-selected' : '' %>" data-personal-id="<%= persona.id %>"><%= persona.nombre %></button>
-          <% }) %>
-        </div>
-      </div>
     </div>
 
     <fieldset class="quick-client" data-quick-client>
@@ -61,6 +49,11 @@
       <div class="grid two">
         <label>Chapa <input name="nueva_chapa" value="<%= formData.nueva_chapa || '' %>" autocomplete="off" data-uppercase></label>
         <label>Marca/modelo <input name="nuevo_marca_modelo" value="<%= formData.nuevo_marca_modelo || '' %>" data-uppercase></label>
+      </div>
+      <% const quickClientExtraOpen = ['nuevo_ruc', 'nuevo_nombre', 'nuevo_telefono', 'nuevo_direccion', 'nuevo_email', 'nuevo_grupo_cliente_id'].some((key) => String(formData[key] || '').trim()); %>
+      <details class="quick-client-more" data-quick-client-more <%= quickClientExtraOpen ? 'open' : '' %>>
+        <summary>Mas datos del cliente (RUC, nombre, telefono, direccion, email, grupo)</summary>
+        <div class="grid two">
         <label>
           RUC
           <input name="nuevo_ruc" value="<%= formData.nuevo_ruc || '' %>" data-uppercase>
@@ -86,8 +79,24 @@
             <% }) %>
           </select>
         </label>
-      </div>
+        </div>
+      </details>
     </fieldset>
+
+    <div class="grid one">
+      <div class="choice-group">
+        <span class="choice-label">Personal</span>
+        <% const selectedPersonalIds = Array.isArray(formData.personal_id) ? formData.personal_id.map(String) : (formData.personal_id ? [String(formData.personal_id)] : []); %>
+        <div data-personal-inputs>
+          <% selectedPersonalIds.forEach((personalId) => { %><input type="hidden" name="personal_id" value="<%= personalId %>"><% }) %>
+        </div>
+        <div class="choice-buttons" data-personal-buttons>
+          <% personal.forEach((persona) => { %>
+            <button type="button" class="choice-button <%= selectedPersonalIds.includes(String(persona.id)) ? 'is-selected' : '' %>" data-personal-id="<%= persona.id %>"><%= persona.nombre %></button>
+          <% }) %>
+        </div>
+      </div>
+    </div>
 
     <div class="services-box">
       <div class="section-title">
@@ -175,6 +184,10 @@
   <div class="section-title">
     <h2>Lavados registrados</h2>
     <form method="get" action="/lavados" class="date-filter">
+      <label class="wash-search-label">
+        Buscar
+        <input type="search" placeholder="Chapa, modelo, personal, pago..." autocomplete="off" data-wash-search>
+      </label>
       <label>
         Fecha
         <input type="date" name="fecha" value="<%= fecha %>" onchange="this.form.submit()">
@@ -241,10 +254,40 @@
           </tr>
         <% }) %>
         <% if (!lavados.length) { %><tr><td colspan="4">Sin lavados.</td></tr><% } %>
+        <tr class="is-hidden" data-wash-search-empty><td colspan="4">Sin resultados para la búsqueda.</td></tr>
       </tbody>
     </table>
   </div>
 </section>
+
+<script>
+  (() => {
+    const input = document.querySelector("[data-wash-search]");
+    if (!input) return;
+    const rows = Array.from(document.querySelectorAll("tr.wash-row"));
+    const empty = document.querySelector("[data-wash-search-empty]");
+    const normalize = (text) => String(text || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    rows.forEach((row) => {
+      const payment = row.querySelector(".payment-cell");
+      const paymentText = payment ? (payment.firstElementChild || payment).textContent : "";
+      const cells = Array.from(row.cells).slice(0, 3).map((cell) => cell.textContent).join(" ");
+      row.dataset.searchText = normalize(cells + " " + paymentText).replace(/\s+/g, " ");
+    });
+    input.addEventListener("input", () => {
+      const terms = normalize(input.value).trim().split(/\s+/).filter(Boolean);
+      let visible = 0;
+      rows.forEach((row) => {
+        const match = terms.every((term) => row.dataset.searchText.includes(term));
+        row.classList.toggle("is-hidden", !match);
+        if (match) visible += 1;
+      });
+      if (empty) empty.classList.toggle("is-hidden", !(rows.length && terms.length && !visible));
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") event.preventDefault();
+    });
+  })();
+</script>
 
 <div class="modal-backdrop is-hidden" data-payment-modal>
   <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">

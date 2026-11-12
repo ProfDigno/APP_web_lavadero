@@ -697,6 +697,35 @@ textarea {
   min-width: 180px;
 }
 
+.date-filter .wash-search-label {
+  min-width: 280px;
+}
+
+tr.is-hidden {
+  display: none;
+}
+
+.quick-client-more {
+  margin-top: 12px;
+}
+
+.quick-client-more > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--muted, #687385);
+  user-select: none;
+}
+
+.quick-client-more > summary:hover {
+  color: inherit;
+}
+
+.quick-client-more[open] > summary {
+  margin-bottom: 12px;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

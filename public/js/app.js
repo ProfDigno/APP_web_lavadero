@@ -1,4 +1,10 @@
 (function () {
+  // Si el navegador restaura la pagina desde su cache de "Atras/Adelante",
+  // recargarla para no mostrar datos desactualizados.
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) window.location.reload();
+  });
+
   const navToggle = document.querySelector(".nav-toggle");
   const mainNavigation = document.querySelector("#main-navigation");
 
@@ -139,6 +145,11 @@
 
     quickFields.ruc?.addEventListener("blur", lookupQuickRuc);
 
+    const quickClientMore = quickClient.querySelector("[data-quick-client-more]");
+    quickClientMore?.addEventListener("invalid", () => {
+      quickClientMore.open = true;
+    }, true);
+
     function optionText(cliente) {
       return `${cliente.chapa} - ${cliente.marca_modelo}${cliente.nombre ? ` - ${cliente.nombre}` : ""}${cliente.grupo_nombre ? ` (${cliente.grupo_nombre})` : ""}`;
     }
@@ -198,8 +209,11 @@
         grupo_nombre: option.dataset.grupoNombre || ""
       })));
 
+    let quickFilledFromClient = false;
+
     function fillQuickClient(option) {
       if (!option) return;
+      quickFilledFromClient = true;
       quickFields.chapa.value = option.dataset.chapa || "";
       quickFields.marcaModelo.value = option.dataset.marcaModelo || "";
       quickFields.ruc.value = option.dataset.ruc || "";
@@ -259,6 +273,17 @@
       let searchTimer = null;
       clientSearch.addEventListener("input", () => {
         clearTimeout(searchTimer);
+        if (clientSelect.value) {
+          clientSelect.value = "";
+          if (quickFilledFromClient) {
+            Object.values(quickFields).forEach((field) => {
+              if (field) field.value = "";
+            });
+            setQuickRucStatus("");
+            quickFilledFromClient = false;
+          }
+          clientSelect.dispatchEvent(new Event("change"));
+        }
         searchTimer = setTimeout(async () => {
           const term = clientSearch.value.trim();
           try {

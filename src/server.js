@@ -60,6 +60,12 @@ app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/vendor/chart.js", express.static(path.join(__dirname, "..", "node_modules", "chart.js", "dist")));
+// Las paginas dinamicas no se guardan en cache: al volver con "Atras" o reabrir una
+// pestaña el navegador pide datos actuales en lugar de mostrar totales viejos.
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 app.use(
   session({
     secret: config.sessionSecret,
